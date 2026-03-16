@@ -11,3 +11,16 @@ test("home redirects to projects", async ({ page }) => {
     page.getByText("Task 1 baseline is ready for the projects workspace."),
   ).toBeVisible();
 });
+
+test("user can navigate project dashboard, chapter workbench and control page", async ({
+  page,
+}) => {
+  await page.goto("/projects/project_demo");
+
+  await page.getByRole("link", { name: "章节工作台" }).click();
+  await expect(page).toHaveURL(/\/chapter$/);
+
+  await page.goto("/projects/project_demo");
+  await page.getByRole("link", { name: "控盘页" }).click();
+  await expect(page).toHaveURL(/\/control$/);
+});
