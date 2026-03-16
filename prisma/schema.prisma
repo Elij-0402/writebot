@@ -1,0 +1,150 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum StateObjectType {
+  chapter_draft
+  characters
+  world_rule
+  plot
+  chapter_cards
+  foreshadow_registry
+  issues_and_decisions
+  project_card
+}
+
+enum ProposalStatus {
+  proposal
+  review_ready
+  approved
+  rejected
+  committed
+}
+
+enum ReviewStatus {
+  pending
+  completed
+}
+
+enum ApprovalRole {
+  author
+  chief_editor
+}
+
+enum ApprovalDecisionStatus {
+  pending
+  approved
+  rejected
+}
+
+enum AuditEventType {
+  proposal_created
+  review_requested
+  approval_recorded
+  proposal_committed
+}
+
+enum ApprovalScope {
+  object
+  workflow
+}
+
+enum CommitStatus {
+  committed
+}
+
+model Project {
+  id             String          @id @default(cuid())
+  title          String?
+  proposals      Proposal[]
+  approvalBatches ApprovalBatch[]
+  auditLogs      AuditLog[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+}
+
+model Proposal {
+  id                String                 @id @default(cuid())
+  projectId         String
+  objectType        StateObjectType
+  status            ProposalStatus         @default(proposal)
+  payload           Json
+  originalProposal  Json
+  review            Review?
+  approvalBatches   ApprovalBatchProposal[]
+  commits           StateCommit[]
+  auditLogs         AuditLog[]
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+  project           Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Review {
+  id         String       @id @default(cuid())
+  proposalId String       @unique
+  status     ReviewStatus @default(pending)
+  reviewerId String?
+  summary    String?
+  notes      String?
+  reviewAt   DateTime?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+  proposal   Proposal     @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+}
+
+model ApprovalBatch {
+  id           String                  @id @default(cuid())
+  projectId    String
+  scope        ApprovalScope
+  requiredRole ApprovalRole
+  status       ApprovalDecisionStatus  @default(pending)
+  reason       String?
+  approvedAt   DateTime?
+  proposals    ApprovalBatchProposal[]
+  createdAt    DateTime                @default(now())
+  updatedAt    DateTime                @updatedAt
+  project      Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model ApprovalBatchProposal {
+  batchId    String
+  proposalId String
+  batch      ApprovalBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  proposal   Proposal      @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+
+  @@id([batchId, proposalId])
+  @@index([proposalId])
+}
+
+model StateCommit {
+  id          String       @id @default(cuid())
+  proposalId  String
+  actorId     String
+  reason      String?
+  version     String
+  status      CommitStatus @default(committed)
+  committedAt DateTime     @default(now())
+  proposal    Proposal     @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+
+  @@index([proposalId])
+}
+
+model AuditLog {
+  id         String    @id @default(cuid())
+  projectId  String
+  proposalId String?
+  actorId    String
+  eventType  AuditEventType
+  metadata   Json?
+  createdAt  DateTime  @default(now())
+  project    Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  proposal   Proposal? @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+  @@index([proposalId, createdAt])
+}
