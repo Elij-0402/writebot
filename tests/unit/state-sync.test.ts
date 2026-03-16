@@ -26,6 +26,7 @@ import {
   createApprovalBatchRecord,
   createProposalRecord,
 } from "@/lib/state/proposal-store";
+import { commitApprovedProposal } from "@/lib/state/commit-writer";
 import { stateObjectTypes } from "@/lib/types/state";
 
 describe("createProposalRecord", () => {
@@ -157,5 +158,18 @@ describe("createApprovalBatchRecord", () => {
     expect(result.proposals).toEqual([
       expect.objectContaining({ proposalId: "proposal_1" }),
     ]);
+  });
+});
+
+describe("commitApprovedProposal", () => {
+  it("rejects commit when proposal is not approved", async () => {
+    await expect(
+      commitApprovedProposal({
+        proposalId: "proposal_1",
+        proposalStatus: "review_ready",
+        actorId: "author_1",
+        reason: "ship it",
+      }),
+    ).rejects.toThrow("proposal not approved");
   });
 });
