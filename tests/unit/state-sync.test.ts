@@ -1,79 +1,27 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
-const { mockTx, mockDb } = vi.hoisted(() => {
-  const tx = {
-    proposal: {
-      create: vi.fn(),
-    },
-    auditLog: {
-      create: vi.fn(),
-    },
-  };
-
-  return {
-    mockTx: tx,
-    mockDb: {
-      $transaction: vi.fn(),
-    },
-  };
-});
-
-vi.mock("@/lib/db", () => ({
-  db: mockDb,
-}));
-
+import { rm } from "node:fs/promises";
+import { beforeEach, describe, expect, it } from "vitest";
 import {
   createApprovalBatchRecord,
   createProposalRecord,
+  markProposalAsReviewReady,
 } from "@/lib/state/proposal-store";
 import { commitApprovedProposal } from "@/lib/state/commit-writer";
+import { getLocalStatePath, getProjectSnapshot } from "@/lib/state/local-state";
 import { stateObjectTypes } from "@/lib/types/state";
 
+const stateFilePath = getLocalStatePath();
+
 describe("createProposalRecord", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockDb.$transaction.mockImplementation(async (callback) => callback(mockTx));
+  beforeEach(async () => {
+    await rm(stateFilePath, { force: true });
   });
 
   it("creates a proposal with linked pending review", async () => {
     const payload = { draftId: "draft_1" };
-    mockTx.proposal.create.mockResolvedValue({
-      id: "proposal_1",
-      projectId: "project_1",
-      objectType: "chapter_draft",
-      status: "proposal",
-      payload,
-      originalProposal: {
-        objectType: "chapter_draft",
-        payload: { draftId: "draft_1" },
-      },
-      review: {
-        id: "review_1",
-        proposalId: "proposal_1",
-        status: "pending",
-        reviewerId: null,
-        summary: null,
-        notes: null,
-        reviewAt: null,
-      },
-    });
-    mockTx.auditLog.create.mockResolvedValue({
-      id: "audit_1",
-      projectId: "project_1",
-      proposalId: "proposal_1",
-      actorId: "system",
-      eventType: "proposal_created",
-      metadata: {
-        proposalId: "proposal_1",
-        projectId: "project_1",
-        objectType: "chapter_draft",
-      },
-      createdAt: new Date("2026-03-16T00:00:00.000Z"),
-    });
 
     const result = await createProposalRecord({
       objectType: "chapter_draft",
-      projectId: "project_1",
+      projectId: "project_demo",
       payload,
     });
 
@@ -105,10 +53,6 @@ describe("createProposalRecord", () => {
       objectType: "chapter_draft",
       payload: { draftId: "draft_1" },
     });
-
-    expect(mockDb.$transaction).toHaveBeenCalledTimes(1);
-    expect(mockTx.proposal.create).toHaveBeenCalledTimes(1);
-    expect(mockTx.auditLog.create).toHaveBeenCalledTimes(1);
   });
 
   it("covers the Task 2 core state object types", () => {
@@ -125,43 +69,64 @@ describe("createProposalRecord", () => {
 });
 
 describe("createApprovalBatchRecord", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  beforeEach(async () => {
+    await rm(stateFilePath, { force: true });
   });
 
   it("creates a workflow batch that links multiple proposals", async () => {
+    const first = await createProposalRecord({
+      objectType: "plot",
+      projectId: "project_demo",
+      payload: { draftId: "proposal_1" },
+    });
+    const second = await createProposalRecord({
+      objectType: "world_rule",
+      projectId: "project_demo",
+      payload: { draftId: "proposal_2" },
+    });
+
     const result = await createApprovalBatchRecord({
-      projectId: "project_1",
+      projectId: "project_demo",
       scope: "workflow",
       requiredRole: "chief_editor",
-      proposalIds: ["proposal_1", "proposal_2"],
+      proposalIds: [first.id, second.id],
     });
 
     expect(result.scope).toBe("workflow");
     expect(result.status).toBe("pending");
     expect(result.requiredRole).toBe("chief_editor");
     expect(result.proposals).toEqual([
-      expect.objectContaining({ proposalId: "proposal_1" }),
-      expect.objectContaining({ proposalId: "proposal_2" }),
+      expect.objectContaining({ proposalId: first.id }),
+      expect.objectContaining({ proposalId: second.id }),
     ]);
   });
 
   it("creates an object batch for a single proposal", async () => {
+    const proposal = await createProposalRecord({
+      objectType: "chapter_draft",
+      projectId: "project_demo",
+      payload: { draftId: "proposal_1" },
+    });
+
     const result = await createApprovalBatchRecord({
-      projectId: "project_1",
+      projectId: "project_demo",
       scope: "object",
       requiredRole: "author",
-      proposalIds: ["proposal_1"],
+      proposalIds: [proposal.id],
     });
 
     expect(result.scope).toBe("object");
     expect(result.proposals).toEqual([
-      expect.objectContaining({ proposalId: "proposal_1" }),
+      expect.objectContaining({ proposalId: proposal.id }),
     ]);
   });
 });
 
 describe("commitApprovedProposal", () => {
+  beforeEach(async () => {
+    await rm(stateFilePath, { force: true });
+  });
+
   it("rejects commit when proposal is not approved", async () => {
     await expect(
       commitApprovedProposal({
@@ -171,5 +136,37 @@ describe("commitApprovedProposal", () => {
         reason: "ship it",
       }),
     ).rejects.toThrow("proposal not approved");
+  });
+
+  it("persists a committed proposal when status is approved", async () => {
+    const proposal = await createProposalRecord({
+      objectType: "chapter_draft",
+      projectId: "project_demo",
+      payload: { draftId: "proposal_approved" },
+    });
+
+    await markProposalAsReviewReady({
+      proposalId: proposal.id,
+      summary: "ready",
+    });
+
+    const result = await commitApprovedProposal({
+      proposalId: proposal.id,
+      proposalStatus: "approved",
+      actorId: "author_1",
+      reason: "ship it",
+    });
+
+    const snapshot = await getProjectSnapshot("project_demo");
+
+    expect(result.status).toBe("committed");
+    expect(snapshot?.commits).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          proposalId: proposal.id,
+          actorId: "author_1",
+        }),
+      ]),
+    );
   });
 });

@@ -24,6 +24,7 @@
 .DS_Store
 *.pem
 .worktrees/
+.writebot/
 
 # debug
 npm-debug.log*

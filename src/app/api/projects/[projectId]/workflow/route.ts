@@ -11,6 +11,9 @@ export async function POST(
     mode: body.mode,
     action: body.action,
     projectId,
+    prompt: body.prompt,
+    chapterId: body.chapterId,
+    isHighRisk: body.isHighRisk,
   });
 
   return NextResponse.json(result, { status: 200 });
