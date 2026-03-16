@@ -44,3 +44,17 @@ test("旧确认页和修复页都会回到章节工作区的内联状态", async
   await expect(page.getByText("检测到一项连续性问题")).toBeVisible();
   await expect(page.getByText("修复建议")).toBeVisible();
 });
+
+test("原型使用批准后的中文创作产品语言", async ({ page }) => {
+  await page.goto("/projects/project_demo");
+
+  await expect(page.getByRole("heading", { level: 1, name: "项目概览" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "章节工作区" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "故事设定" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "大纲" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "历史记录" })).toBeVisible();
+
+  await expect(page.getByText("Task Dispatch Cockpit")).toHaveCount(0);
+  await expect(page.getByText("Confirmation Center")).toHaveCount(0);
+  await expect(page.getByText("Control Console")).toHaveCount(0);
+});

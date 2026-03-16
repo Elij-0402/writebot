@@ -123,6 +123,9 @@ export function getAgentPrototype(projectId: string) {
     navigation: [
       { href: `${base}`, label: "项目概览", kind: "primary" },
       { href: `${base}/chapter`, label: "章节工作区", kind: "primary" },
+      { href: `${base}#story-bible`, label: "故事设定", kind: "secondary" },
+      { href: `${base}#outline`, label: "大纲", kind: "secondary" },
+      { href: `${base}#history`, label: "历史记录", kind: "secondary" },
     ] satisfies PrototypeLink[],
     overview: {
       title: "项目概览",
@@ -222,3 +225,4 @@ export function getAgentPrototype(projectId: string) {
     },
   };
 }
+
