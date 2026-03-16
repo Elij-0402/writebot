@@ -64,6 +64,21 @@ export type PrototypeAssistantCard = {
   actions?: string[];
 };
 
+export type PrototypeConfirmationCard = {
+  title: string;
+  body: string;
+  impact: string;
+  confirmLabel: string;
+  rejectLabel: string;
+};
+
+export type PrototypeRepairCard = {
+  title: string;
+  body: string;
+  evidence: string;
+  recommendations: string[];
+};
+
 export type PrototypeWorkbench = {
   pageTitle: string;
   pageEyebrow: string;
@@ -73,9 +88,14 @@ export type PrototypeWorkbench = {
   currentChapterTitle: string;
   writingGoal: string;
   editorBody: string;
-  banner: PrototypeBanner | null;
+  banners: {
+    confirmation: PrototypeBanner;
+    repair: PrototypeBanner;
+  };
   chapterList: PrototypeChapterNavItem[];
   assistantCards: PrototypeAssistantCard[];
+  confirmationCard: PrototypeConfirmationCard;
+  repairCard: PrototypeRepairCard;
 };
 
 export function getAgentPrototype(projectId: string) {
@@ -157,7 +177,18 @@ export function getAgentPrototype(projectId: string) {
       writingGoal: "保持紧张推进，但不要提前透支档案馆揭秘。",
       editorBody:
         "林澄停在档案馆门前，指尖还扣着上一章留下的钥匙，心里已经替自己否决了三种更安全的退路。她知道只要再往前一步，真相就会开始主动索取代价。",
-      banner: null,
+      banners: {
+        confirmation: {
+          label: "有 1 项内容需要你确认",
+          tone: "confirmation",
+          actionLabel: "待确认",
+        },
+        repair: {
+          label: "检测到一项连续性问题",
+          tone: "repair",
+          actionLabel: "需修复",
+        },
+      },
       chapterList: [
         { id: "chapter-7", label: "第 7 章", status: "进行中", href: `${base}/chapter?chapter=7` },
         { id: "chapter-8", label: "第 8 章", status: "待确认", href: `${base}/chapter?chapter=8` },
@@ -167,6 +198,19 @@ export function getAgentPrototype(projectId: string) {
         { title: "本章上下文", body: "角色动机已锁定，档案馆揭秘必须留在本章内部。" },
         { title: "可用操作", actions: ["继续写作", "改写这一段", "扩写张力"] },
       ],
+      confirmationCard: {
+        title: "当前确认",
+        body: "先确认第 8 章档案馆段落后的延续方向，再继续生成候选正文。",
+        impact: "会影响第 8 章推进节奏、人物动机承接以及档案馆线索释放顺序。",
+        confirmLabel: "确认继续",
+        rejectLabel: "退回重做",
+      },
+      repairCard: {
+        title: "修复建议",
+        body: "当前候选段落提前解释了档案馆线索，建议收回解释性语句，保留悬念。",
+        evidence: "受影响范围：第 8 章后半段的悬念和转折节奏。",
+        recommendations: ["回收过早解释", "保留档案馆线索张力"],
+      },
     } satisfies PrototypeWorkbench,
     control: {
       issue: {

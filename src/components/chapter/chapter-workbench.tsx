@@ -5,9 +5,12 @@ import type { PrototypeWorkbench } from "@/lib/prototype/agent-prototype-data";
 
 type ChapterWorkbenchProps = {
   workbench: PrototypeWorkbench;
+  panel?: "confirmation" | "repair" | null;
 };
 
-export function ChapterWorkbench({ workbench }: ChapterWorkbenchProps) {
+export function ChapterWorkbench({ workbench, panel = null }: ChapterWorkbenchProps) {
+  const banner = panel ? workbench.banners[panel] : null;
+
   return (
     <section className="grid gap-6 lg:grid-cols-[220px_minmax(0,1fr)_320px]">
       <ChapterNavigation
@@ -25,12 +28,8 @@ export function ChapterWorkbench({ workbench }: ChapterWorkbenchProps) {
           <p className="max-w-3xl text-base leading-7 text-foreground/72">{workbench.writingGoal}</p>
         </header>
 
-        {workbench.banner ? (
-          <ApprovalBanner
-            label={workbench.banner.label}
-            tone={workbench.banner.tone}
-            actionLabel={workbench.banner.actionLabel}
-          />
+        {banner ? (
+          <ApprovalBanner label={banner.label} tone={banner.tone} actionLabel={banner.actionLabel} />
         ) : null}
 
         <section className="rounded-[28px] border border-foreground/10 bg-background/72 p-6">
@@ -46,7 +45,12 @@ export function ChapterWorkbench({ workbench }: ChapterWorkbenchProps) {
         </section>
       </section>
 
-      <ContextAiPanel title={workbench.assistantTitle} cards={workbench.assistantCards} />
+      <ContextAiPanel
+        title={workbench.assistantTitle}
+        cards={workbench.assistantCards}
+        confirmationCard={panel === "confirmation" ? workbench.confirmationCard : null}
+        repairCard={panel === "repair" ? workbench.repairCard : null}
+      />
     </section>
   );
 }

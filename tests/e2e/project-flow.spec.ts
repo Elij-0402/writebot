@@ -29,3 +29,18 @@ test("章节工作区显示三栏写作布局", async ({ page }) => {
   await expect(page.getByText("当前建议")).toBeVisible();
   await expect(page.getByText("继续写作")).toBeVisible();
 });
+
+test("旧确认页和修复页都会回到章节工作区的内联状态", async ({ page }) => {
+  await page.goto("/projects/project_demo/confirmation");
+
+  await expect(page).toHaveURL(/\/projects\/project_demo\/chapter\?panel=confirmation$/);
+  await expect(page.getByText("有 1 项内容需要你确认")).toBeVisible();
+  await expect(page.getByRole("button", { name: "确认继续" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "退回重做" })).toBeVisible();
+
+  await page.goto("/projects/project_demo/control");
+
+  await expect(page).toHaveURL(/\/projects\/project_demo\/chapter\?panel=repair$/);
+  await expect(page.getByText("检测到一项连续性问题")).toBeVisible();
+  await expect(page.getByText("修复建议")).toBeVisible();
+});
