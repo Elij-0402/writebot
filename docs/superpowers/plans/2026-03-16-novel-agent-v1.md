@@ -2,289 +2,333 @@
 
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 构建一个符合 Anthropic 风格的中文小说主编台 V1，优先实现状态优先、审批优先、工作流优先的内部创作系统，覆盖立项到开写、章节生产、长篇纠偏三条核心流程。
+**Goal:** 修正当前偏离 spec 的审批数据模型，并补齐 workflow、API、页面、验证与文档，形成符合设计文档的 V1 最小闭环。
 
-**Architecture:** 采用单仓库 Next.js 全栈实现，先建立结构化状态模型、`proposal -> review -> approve -> commit` 审批链和确定性状态写入器，再在其上叠加写作、审校、控盘三种能力模式。前台只暴露一个写作入口和三个核心页面，避免过早引入多 agent 或多服务复杂度。
+**Architecture:** 先修正状态事实源，把 `Proposal`、`Review`、`ApprovalBatch`、`ApprovalBatchProposal`、`StateCommit` 的职责重新拉直，再在这个底座上实现三条 workflow、统一 mode routing、三个 API 和三个页面。所有业务写入都通过确定性状态模块执行，workflow 只产出结构化结果，不直接 commit。
 
-**Tech Stack:** Next.js 16, TypeScript, React, Tailwind CSS, Prisma, PostgreSQL, Zod, OpenAI API, Vitest, Testing Library, Playwright
+**Tech Stack:** Next.js 16, TypeScript, React, Tailwind CSS, Prisma, PostgreSQL, Vitest, Playwright, ESLint
 
 ---
 
 ## File Structure
 
-本计划按空仓库启动，采用最小可维护结构：
-
-- `package.json`
-  依赖、脚本、lint/test 命令。
-- `next.config.ts`
-  Next.js 配置。
-- `tsconfig.json`
-  TypeScript 配置。
-- `postcss.config.mjs`
-  PostCSS 配置。
-- `tailwind.config.ts`
-  Tailwind 配置。
 - `prisma/schema.prisma`
-  状态模型、审批链对象、审计记录。
+  修正状态模型，显式引入 `ApprovalBatch` 与 `ApprovalBatchProposal`
 - `prisma/seed.ts`
-  示例项目种子数据。
-- `src/app/layout.tsx`
-  全局布局。
-- `src/app/page.tsx`
-  首页跳转。
-- `src/app/projects/page.tsx`
-  项目列表页。
-- `src/app/projects/[projectId]/page.tsx`
-  项目页。
-- `src/app/projects/[projectId]/chapter/page.tsx`
-  章节工作台。
-- `src/app/projects/[projectId]/control/page.tsx`
-  控盘页。
-- `src/app/api/projects/route.ts`
-  项目创建与列表。
-- `src/app/api/projects/[projectId]/workflow/route.ts`
-  workflow 入口。
-- `src/app/api/projects/[projectId]/approve/route.ts`
-  审批与 commit 入口。
-- `src/components/project/project-summary.tsx`
-  项目概览组件。
-- `src/components/chapter/chapter-workbench.tsx`
-  章节工作台主组件。
-- `src/components/control/control-panel.tsx`
-  控盘页主组件。
-- `src/components/shared/approval-banner.tsx`
-  审批提示条。
+  提供和新 schema 对齐的最小种子数据
 - `src/lib/db.ts`
-  Prisma client。
-- `src/lib/env.ts`
-  环境变量校验。
+  Prisma client
 - `src/lib/types/state.ts`
-  状态对象类型。
-- `src/lib/types/workflow.ts`
-  workflow 输入输出类型。
-- `src/lib/state/project-state.ts`
-  项目聚合读取。
-- `src/lib/state/context-package.ts`
-  最小上下文包规则。
+  状态对象类型、枚举和输入输出类型
 - `src/lib/state/proposal-store.ts`
-  proposal / review / approval 读写。
+  proposal、review、approval batch 创建与读取
 - `src/lib/state/audit-log.ts`
-  审批与 commit 审计记录。
+  审计日志记录与序列化
 - `src/lib/state/commit-writer.ts`
-  确定性状态写入器。
-- `src/lib/workflows/novel-workflow.ts`
-  统一 workflow 入口。
-- `src/lib/workflows/project-bootstrap.ts`
-  立项到开写工作流。
-- `src/lib/workflows/chapter-production.ts`
-  章节生产工作流。
-- `src/lib/workflows/story-control.ts`
-  长篇纠偏工作流。
-- `src/lib/workflows/modes/write-mode.ts`
-  写作模式。
-- `src/lib/workflows/modes/review-mode.ts`
-  审校模式。
-- `src/lib/workflows/modes/control-mode.ts`
-  控盘模式。
-- `src/lib/llm/client.ts`
-  模型调用封装。
-- `src/lib/llm/prompts.ts`
-  prompt 模板。
-- `src/lib/rules/risk-rules.ts`
-  高风险章节规则。
+  批准后的 proposal commit 管道
+- `src/lib/state/project-state.ts`
+  项目页聚合读取
 - `src/lib/rules/state-sync.ts`
-  定稿后的确定性状态同步规则。
+  proposal 状态同步规则
+- `src/lib/rules/risk-rules.ts`
+  高风险章节判断
 - `src/lib/rules/context-conflicts.ts`
-  上下文冲突检测。
+  上下文冲突检测
 - `src/lib/authors/approval-policy.ts`
-  审批升级规则。
+  审批角色升级规则
+- `src/lib/state/context-package.ts`
+  最小上下文包构建
 - `src/lib/serializers/workflow-io.ts`
-  workflow schema。
-- `src/styles/globals.css`
-  全局样式。
-- `tests/unit/context-package.test.ts`
-  上下文包规则测试。
-- `tests/unit/approval-policy.test.ts`
-  审批规则测试。
+  workflow 输入输出序列化
+- `src/lib/workflows/project-bootstrap.ts`
+  立项到开写 workflow
+- `src/lib/workflows/chapter-production.ts`
+  章节生产 workflow
+- `src/lib/workflows/story-control.ts`
+  长篇纠偏 workflow
+- `src/lib/workflows/novel-workflow.ts`
+  统一 workflow 入口
+- `src/lib/workflows/modes/write-mode.ts`
+  写作模式路由
+- `src/lib/workflows/modes/review-mode.ts`
+  审校模式路由
+- `src/lib/workflows/modes/control-mode.ts`
+  控盘模式路由
+- `src/lib/llm/client.ts`
+  模型调用占位封装
+- `src/lib/llm/prompts.ts`
+  prompt 占位模板
+- `src/app/api/projects/route.ts`
+  项目创建与列表 API
+- `src/app/api/projects/[projectId]/workflow/route.ts`
+  workflow 入口 API
+- `src/app/api/projects/[projectId]/approve/route.ts`
+  审批 API
+- `src/app/projects/page.tsx`
+  项目列表页
+- `src/app/projects/[projectId]/page.tsx`
+  项目总览页
+- `src/app/projects/[projectId]/chapter/page.tsx`
+  章节工作台页
+- `src/app/projects/[projectId]/control/page.tsx`
+  控盘页
+- `src/components/project/project-summary.tsx`
+  项目总览组件
+- `src/components/chapter/chapter-workbench.tsx`
+  章节工作台组件
+- `src/components/control/control-panel.tsx`
+  控盘组件
+- `src/components/shared/approval-banner.tsx`
+  待审批提示条
 - `tests/unit/state-sync.test.ts`
-  状态同步与 commit 测试。
+  proposal、approval batch、commit 的状态规则测试
+- `tests/unit/approval-policy.test.ts`
+  审批升级规则测试
+- `tests/unit/context-package.test.ts`
+  上下文包与冲突规则测试
 - `tests/unit/project-bootstrap.test.ts`
-  立项到开写流程测试。
+  立项 workflow 测试
 - `tests/unit/chapter-production.test.ts`
-  章节生产流程测试。
+  章节生产 workflow 测试
 - `tests/unit/story-control.test.ts`
-  控盘流程测试。
+  控盘 workflow 测试
 - `tests/unit/workflow-modes.test.ts`
-  模式路由测试。
+  mode routing 测试
 - `tests/integration/projects-route.test.ts`
-  项目 API 测试。
+  projects route 集成测试
 - `tests/integration/workflow-route.test.ts`
-  workflow API 测试。
+  workflow route 集成测试
 - `tests/integration/approve-route.test.ts`
-  approve API 测试。
+  approve route 集成测试
 - `tests/e2e/project-flow.spec.ts`
-  端到端流程测试。
+  最小页面导航闭环
 - `README.md`
-  本地开发说明。
+  本地开发与验证说明
 - `.env.example`
-  环境变量模板。
+  本地环境变量模板
 
 ## Testing Notes
 
-- API 集成测试不要直接 `fetch("http://localhost:3000")`。
-- 路由测试统一采用“直接导入 route handler + mock `NextRequest`”方式。
-- 只有端到端测试才依赖 Playwright 启动 Next 应用。
+- 路由集成测试统一直接导入 route handler，不通过本地 HTTP 服务
+- workflow 测试优先验证输出契约和状态边界，不提前实现复杂 AI 逻辑
+- 每个任务遵循 TDD：先写失败测试，再实现最小代码，再运行对应测试
+- `eslint` 与 `prisma validate` 是每个大 chunk 的最低验证要求
 
-## Chunk 1: 工程骨架与状态事实源
+## Chunk 1: 数据模型修正与状态事实源
 
-### Task 1: 初始化 Next.js 工程与测试骨架
-
-**Files:**
-- Create: `package.json`
-- Create: `next.config.ts`
-- Create: `tsconfig.json`
-- Create: `postcss.config.mjs`
-- Create: `tailwind.config.ts`
-- Create: `src/app/layout.tsx`
-- Create: `src/app/page.tsx`
-- Create: `src/styles/globals.css`
-- Create: `.env.example`
-- Create: `README.md`
-- Create: `tests/e2e/project-flow.spec.ts`
-
-- [ ] **Step 1: 写一个失败的 E2E 测试，约束首页重定向**
-
-```ts
-import { test, expect } from "@playwright/test";
-
-test("home redirects to projects", async ({ page }) => {
-  await page.goto("/");
-  await expect(page).toHaveURL(/\/projects$/);
-});
-```
-
-- [ ] **Step 2: 运行测试确认失败**
-
-Run: `pnpm playwright test tests/e2e/project-flow.spec.ts --grep "home redirects to projects"`
-Expected: FAIL with missing app or missing route
-
-- [ ] **Step 3: 创建最小应用骨架**
-
-```tsx
-import { redirect } from "next/navigation";
-
-export default function HomePage() {
-  redirect("/projects");
-}
-```
-
-- [ ] **Step 4: 运行测试确认通过**
-
-Run: `pnpm playwright test tests/e2e/project-flow.spec.ts --grep "home redirects to projects"`
-Expected: PASS
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add package.json next.config.ts tsconfig.json postcss.config.mjs tailwind.config.ts src/app src/styles .env.example README.md tests/e2e/project-flow.spec.ts
-git commit -m "feat: scaffold novel console app"
-```
-
-### Task 2: 建立 Prisma 状态模型与审批链对象
+### Task 1: 修正 Prisma schema，引入 ApprovalBatch 与关联表
 
 **Files:**
-- Create: `prisma/schema.prisma`
-- Create: `prisma/seed.ts`
-- Create: `src/lib/db.ts`
-- Create: `src/lib/types/state.ts`
-- Create: `src/lib/state/proposal-store.ts`
-- Create: `src/lib/state/audit-log.ts`
-- Create: `tests/unit/state-sync.test.ts`
+- Modify: `prisma/schema.prisma`
+- Modify: `prisma/seed.ts`
+- Modify: `src/lib/types/state.ts`
+- Test: `tests/unit/state-sync.test.ts`
 
-- [ ] **Step 1: 写失败测试，锁定 proposal-review-approve-commit 的基本对象**
+- [ ] **Step 1: 写失败单测，约束 workflow 审批不再直接挂在单个 proposal 上**
 
 ```ts
 import { describe, expect, it } from "vitest";
-import { createProposalRecord } from "@/lib/state/proposal-store";
+import { createApprovalBatchRecord } from "@/lib/state/proposal-store";
 
-describe("createProposalRecord", () => {
-  it("creates a proposal in pending review state", async () => {
-    const result = await createProposalRecord({
-      objectType: "chapter_draft",
+describe("createApprovalBatchRecord", () => {
+  it("creates a workflow batch that links multiple proposals", async () => {
+    const result = await createApprovalBatchRecord({
       projectId: "project_1",
-      payload: { draftId: "draft_1" },
+      scope: "workflow",
+      requiredRole: "chief_editor",
+      proposalIds: ["proposal_1", "proposal_2"],
     });
 
-    expect(result.status).toBe("proposal");
-    expect(result.objectType).toBe("chapter_draft");
-    expect(result.audit).toEqual(
-      expect.objectContaining({
-        actorId: "system",
-        eventType: "proposal_created",
-      }),
-    );
+    expect(result.scope).toBe("workflow");
+    expect(result.proposals).toHaveLength(2);
   });
 });
 ```
 
 - [ ] **Step 2: 运行测试确认失败**
 
-Run: `pnpm vitest tests/unit/state-sync.test.ts`
-Expected: FAIL with missing module
+Run: `pnpm.cmd vitest tests/unit/state-sync.test.ts`
+Expected: FAIL with missing `createApprovalBatchRecord` or outdated schema assumptions
 
-- [ ] **Step 3: 实现最小 schema 与 proposal store**
+- [ ] **Step 3: 实现最小 schema 与类型修正**
 
-```ts
-export async function createProposalRecord(input: {
-  objectType: string;
-  projectId: string;
-  payload: unknown;
-}) {
-  return {
-    id: "proposal_demo",
-    status: "proposal" as const,
-    objectType: input.objectType,
-    payload: input.payload,
-    audit: {
-      actorId: "system",
-      eventType: "proposal_created",
-    },
-  };
+```prisma
+model ApprovalBatch {
+  id           String                 @id @default(cuid())
+  projectId    String
+  scope        ApprovalScope
+  requiredRole ApprovalRole
+  status       ApprovalDecisionStatus @default(pending)
+  reason       String?
+  approvedAt   DateTime?
+  proposals    ApprovalBatchProposal[]
+}
+
+model ApprovalBatchProposal {
+  batchId    String
+  proposalId String
+  batch      ApprovalBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  proposal   Proposal      @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+
+  @@id([batchId, proposalId])
 }
 ```
 
-- [ ] **Step 4: 运行单测和 schema 校验**
+- [ ] **Step 4: 运行测试与 schema 校验**
 
-Run: `pnpm vitest tests/unit/state-sync.test.ts`
+Run: `pnpm.cmd vitest tests/unit/state-sync.test.ts`
 Expected: PASS
 
-Run: `pnpm prisma validate`
+Run: `pnpm.cmd prisma validate`
 Expected: `The schema at prisma/schema.prisma is valid`
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add prisma src/lib/db.ts src/lib/types/state.ts src/lib/state/proposal-store.ts src/lib/state/audit-log.ts tests/unit/state-sync.test.ts
-git commit -m "feat: add state and approval schema"
+git add prisma/schema.prisma prisma/seed.ts src/lib/types/state.ts tests/unit/state-sync.test.ts
+git commit -m "feat: repair approval batch data model"
 ```
 
-## Chunk 2: 审批边界与确定性写入
+### Task 2: 重写 proposal store，显式创建 proposal、review 与 approval batch
 
-### Task 3: 实现审批策略与高风险章节升级规则
+**Files:**
+- Modify: `src/lib/state/proposal-store.ts`
+- Modify: `src/lib/state/audit-log.ts`
+- Modify: `tests/unit/state-sync.test.ts`
+
+- [ ] **Step 1: 写失败单测，约束 object batch 只包含一个 proposal**
+
+```ts
+it("creates an object batch for a single proposal", async () => {
+  const result = await createApprovalBatchRecord({
+    projectId: "project_1",
+    scope: "object",
+    requiredRole: "author",
+    proposalIds: ["proposal_1"],
+  });
+
+  expect(result.proposals).toEqual([
+    expect.objectContaining({ proposalId: "proposal_1" }),
+  ]);
+});
+```
+
+- [ ] **Step 2: 运行测试确认失败**
+
+Run: `pnpm.cmd vitest tests/unit/state-sync.test.ts`
+Expected: FAIL with wrong approval structure
+
+- [ ] **Step 3: 实现最小 proposal/review/batch store**
+
+```ts
+export async function createApprovalBatchRecord(input: {
+  projectId: string;
+  scope: "object" | "workflow";
+  requiredRole: "author" | "chief_editor";
+  proposalIds: string[];
+}) {
+  return {
+    id: "batch_demo",
+    projectId: input.projectId,
+    scope: input.scope,
+    requiredRole: input.requiredRole,
+    status: "pending" as const,
+    proposals: input.proposalIds.map((proposalId) => ({ proposalId })),
+  };
+}
+```
+
+- [ ] **Step 4: 运行测试确认通过**
+
+Run: `pnpm.cmd vitest tests/unit/state-sync.test.ts`
+Expected: PASS
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/lib/state/proposal-store.ts src/lib/state/audit-log.ts tests/unit/state-sync.test.ts
+git commit -m "feat: add explicit proposal and approval batch store"
+```
+
+### Task 3: 实现 commit writer 与 proposal 状态同步规则
+
+**Files:**
+- Create: `src/lib/state/commit-writer.ts`
+- Create: `src/lib/rules/state-sync.ts`
+- Modify: `tests/unit/state-sync.test.ts`
+
+- [ ] **Step 1: 写失败单测，约束未批准 proposal 不能 commit**
+
+```ts
+import { commitApprovedProposal } from "@/lib/state/commit-writer";
+
+it("rejects commit when proposal is not approved", async () => {
+  await expect(
+    commitApprovedProposal({
+      proposalId: "proposal_1",
+      proposalStatus: "review_ready",
+      actorId: "author_1",
+      reason: "ship it",
+    }),
+  ).rejects.toThrow("proposal not approved");
+});
+```
+
+- [ ] **Step 2: 运行测试确认失败**
+
+Run: `pnpm.cmd vitest tests/unit/state-sync.test.ts`
+Expected: FAIL with missing module
+
+- [ ] **Step 3: 实现最小 commit writer**
+
+```ts
+export async function commitApprovedProposal(input: {
+  proposalId: string;
+  proposalStatus: "approved" | "review_ready" | "committed";
+  actorId: string;
+  reason: string;
+}) {
+  if (input.proposalStatus !== "approved") {
+    throw new Error("proposal not approved");
+  }
+
+  return {
+    proposalId: input.proposalId,
+    status: "committed" as const,
+    auditEventType: "proposal_committed" as const,
+  };
+}
+```
+
+- [ ] **Step 4: 运行测试确认通过**
+
+Run: `pnpm.cmd vitest tests/unit/state-sync.test.ts`
+Expected: PASS
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/lib/state/commit-writer.ts src/lib/rules/state-sync.ts tests/unit/state-sync.test.ts
+git commit -m "feat: add proposal commit pipeline"
+```
+
+## Chunk 2: 审批策略与上下文规则
+
+### Task 4: 实现审批升级规则与高风险章节判断
 
 **Files:**
 - Create: `src/lib/authors/approval-policy.ts`
 - Create: `src/lib/rules/risk-rules.ts`
 - Create: `tests/unit/approval-policy.test.ts`
 
-- [ ] **Step 1: 写失败测试，要求高风险章节升级为主编审批**
+- [ ] **Step 1: 写失败单测，约束高风险章节升级到 chief editor**
 
 ```ts
 import { describe, expect, it } from "vitest";
 import { resolveApprovalRequirement } from "@/lib/authors/approval-policy";
 
 describe("resolveApprovalRequirement", () => {
-  it("requires chief editor for high risk chapter approval", () => {
+  it("requires chief editor for high risk chapter draft", () => {
     const result = resolveApprovalRequirement({
       objectType: "chapter_draft",
       riskLevel: "high",
@@ -297,100 +341,37 @@ describe("resolveApprovalRequirement", () => {
 
 - [ ] **Step 2: 运行测试确认失败**
 
-Run: `pnpm vitest tests/unit/approval-policy.test.ts`
+Run: `pnpm.cmd vitest tests/unit/approval-policy.test.ts`
 Expected: FAIL with missing module
 
-- [ ] **Step 3: 实现最小审批升级规则**
+- [ ] **Step 3: 实现最小审批规则**
 
 ```ts
 export function resolveApprovalRequirement(input: {
-  objectType: "chapter_draft" | "world_rule" | "plot_change";
+  objectType: "chapter_draft" | "world_rule" | "plot" | "chapter_cards";
   riskLevel: "low" | "high";
 }) {
-  if (input.objectType !== "chapter_draft") return { requiredRole: "chief_editor" as const };
-  return { requiredRole: input.riskLevel === "high" ? "chief_editor" : "author" as const };
-}
-```
+  if (input.objectType !== "chapter_draft") {
+    return { requiredRole: "chief_editor" as const };
+  }
 
-- [ ] **Step 4: 运行测试确认通过**
-
-Run: `pnpm vitest tests/unit/approval-policy.test.ts`
-Expected: PASS
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add src/lib/authors/approval-policy.ts src/lib/rules/risk-rules.ts tests/unit/approval-policy.test.ts
-git commit -m "feat: add approval escalation rules"
-```
-
-### Task 4: 实现确定性状态同步与 commit writer
-
-**Files:**
-- Create: `src/lib/rules/state-sync.ts`
-- Create: `src/lib/state/commit-writer.ts`
-- Modify: `tests/unit/state-sync.test.ts`
-
-- [ ] **Step 1: 扩展失败测试，要求只有 approved proposal 才能 commit**
-
-```ts
-import { describe, expect, it } from "vitest";
-import { commitApprovedProposal } from "@/lib/state/commit-writer";
-
-describe("commitApprovedProposal", () => {
-  it("rejects unapproved proposal", async () => {
-    await expect(
-      commitApprovedProposal({
-        proposalId: "p1",
-        approvalStatus: "pending",
-        actorId: "author_1",
-        reason: "looks good",
-      }),
-    ).rejects.toThrow("proposal not approved");
-  });
-});
-```
-
-- [ ] **Step 2: 运行测试确认失败**
-
-Run: `pnpm vitest tests/unit/state-sync.test.ts`
-Expected: FAIL with missing module
-
-- [ ] **Step 3: 实现状态同步计划与确定性 commit**
-
-```ts
-export async function commitApprovedProposal(input: {
-  proposalId: string;
-  approvalStatus: "approved" | "pending";
-  actorId: string;
-  reason: string;
-}) {
-  if (input.approvalStatus !== "approved") throw new Error("proposal not approved");
   return {
-    status: "committed" as const,
-    proposalId: input.proposalId,
-    auditRecord: {
-      actorId: input.actorId,
-      reason: input.reason,
-      eventType: "proposal_committed",
-    },
+    requiredRole: input.riskLevel === "high" ? "chief_editor" : "author" as const,
   };
 }
 ```
 
 - [ ] **Step 4: 运行测试确认通过**
 
-Run: `pnpm vitest tests/unit/state-sync.test.ts`
+Run: `pnpm.cmd vitest tests/unit/approval-policy.test.ts`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/lib/rules/state-sync.ts src/lib/state/commit-writer.ts tests/unit/state-sync.test.ts
-git commit -m "feat: add deterministic commit pipeline"
+git add src/lib/authors/approval-policy.ts src/lib/rules/risk-rules.ts tests/unit/approval-policy.test.ts
+git commit -m "feat: add approval escalation policy"
 ```
-
-## Chunk 3: 上下文包与三条核心流程
 
 ### Task 5: 实现最小上下文包与冲突检测
 
@@ -400,7 +381,7 @@ git commit -m "feat: add deterministic commit pipeline"
 - Create: `src/lib/serializers/workflow-io.ts`
 - Create: `tests/unit/context-package.test.ts`
 
-- [ ] **Step 1: 写失败测试，覆盖 spec 规定的上下文要素与失败条件**
+- [ ] **Step 1: 写失败单测，约束缺少 chapter card 时 workflow 失败**
 
 ```ts
 import { describe, expect, it } from "vitest";
@@ -410,7 +391,7 @@ describe("buildContextPackage", () => {
   it("fails when chapter card is missing", () => {
     const result = buildContextPackage({
       chapterCard: null,
-      volumeSummary: "第一卷",
+      volumeSummary: "卷一摘要",
       characters: [],
       hardRules: [],
       recentSummaries: [],
@@ -427,10 +408,10 @@ describe("buildContextPackage", () => {
 
 - [ ] **Step 2: 运行测试确认失败**
 
-Run: `pnpm vitest tests/unit/context-package.test.ts`
+Run: `pnpm.cmd vitest tests/unit/context-package.test.ts`
 Expected: FAIL with missing module
 
-- [ ] **Step 3: 实现完整的最小上下文包规则**
+- [ ] **Step 3: 实现最小上下文包规则**
 
 ```ts
 export function buildContextPackage(input: {
@@ -443,7 +424,10 @@ export function buildContextPackage(input: {
   styleGuide: string;
   forbiddenItems: string[];
 }) {
-  if (!input.chapterCard) return { ok: false as const, reason: "missing_chapter_card" as const };
+  if (!input.chapterCard) {
+    return { ok: false as const, reason: "missing_chapter_card" as const };
+  }
+
   return {
     ok: true as const,
     orderedSources: [
@@ -462,33 +446,33 @@ export function buildContextPackage(input: {
 
 - [ ] **Step 4: 运行测试确认通过**
 
-Run: `pnpm vitest tests/unit/context-package.test.ts`
+Run: `pnpm.cmd vitest tests/unit/context-package.test.ts`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add src/lib/state/context-package.ts src/lib/rules/context-conflicts.ts src/lib/serializers/workflow-io.ts tests/unit/context-package.test.ts
-git commit -m "feat: add context package rules"
+git commit -m "feat: add context package constraints"
 ```
 
-### Task 6: 实现立项到开写工作流
+## Chunk 3: 三条核心 workflow 与 mode routing
+
+### Task 6: 实现 project bootstrap workflow
 
 **Files:**
 - Create: `src/lib/workflows/project-bootstrap.ts`
 - Create: `tests/unit/project-bootstrap.test.ts`
 
-- [ ] **Step 1: 写失败测试，约束立项流程必须产出立项卡、设定、总纲、前置章节卡**
+- [ ] **Step 1: 写失败单测，约束立项 workflow 输出 proposals、review 和 workflow batch**
 
 ```ts
 import { describe, expect, it } from "vitest";
 import { runProjectBootstrap } from "@/lib/workflows/project-bootstrap";
 
 describe("runProjectBootstrap", () => {
-  it("returns proposals, review report and approval batch for project bootstrap", async () => {
-    const result = await runProjectBootstrap({
-      prompt: "玄幻升级流",
-    });
+  it("returns bootstrap proposals, review result and workflow batch draft", async () => {
+    const result = await runProjectBootstrap({ prompt: "玄幻升级流" });
 
     expect(result.proposals).toEqual(
       expect.arrayContaining([
@@ -497,18 +481,18 @@ describe("runProjectBootstrap", () => {
         expect.objectContaining({ objectType: "plot" }),
       ]),
     );
-    expect(result.reviewReport.status).toBe("review_ready");
-    expect(result.approvalBatch.scope).toBe("project_bootstrap");
+    expect(result.review.status).toBe("review_ready");
+    expect(result.approvalBatchDraft.scope).toBe("workflow");
   });
 });
 ```
 
 - [ ] **Step 2: 运行测试确认失败**
 
-Run: `pnpm vitest tests/unit/project-bootstrap.test.ts`
+Run: `pnpm.cmd vitest tests/unit/project-bootstrap.test.ts`
 Expected: FAIL with missing module
 
-- [ ] **Step 3: 实现最小立项工作流**
+- [ ] **Step 3: 实现最小 workflow**
 
 ```ts
 export async function runProjectBootstrap(input: { prompt: string }) {
@@ -519,13 +503,10 @@ export async function runProjectBootstrap(input: { prompt: string }) {
       { objectType: "plot", content: "plot draft" },
       { objectType: "chapter_cards", content: "first ten cards" },
     ],
-    reviewReport: {
-      status: "review_ready",
-      summary: "structure consistent",
-    },
-    approvalBatch: {
-      scope: "project_bootstrap",
-      requiredRole: "chief_editor",
+    review: { status: "review_ready" as const },
+    approvalBatchDraft: {
+      scope: "workflow" as const,
+      requiredRole: "chief_editor" as const,
     },
   };
 }
@@ -533,7 +514,7 @@ export async function runProjectBootstrap(input: { prompt: string }) {
 
 - [ ] **Step 4: 运行测试确认通过**
 
-Run: `pnpm vitest tests/unit/project-bootstrap.test.ts`
+Run: `pnpm.cmd vitest tests/unit/project-bootstrap.test.ts`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -543,86 +524,26 @@ git add src/lib/workflows/project-bootstrap.ts tests/unit/project-bootstrap.test
 git commit -m "feat: add project bootstrap workflow"
 ```
 
-### Task 7: 实现长篇纠偏工作流
-
-**Files:**
-- Create: `src/lib/workflows/story-control.ts`
-- Create: `tests/unit/story-control.test.ts`
-
-- [ ] **Step 1: 写失败测试，约束控盘必须输出风险报告与三类方案**
-
-```ts
-import { describe, expect, it } from "vitest";
-import { runStoryControl } from "@/lib/workflows/story-control";
-
-describe("runStoryControl", () => {
-  it("returns risk report, three correction options and a batched approval plan", async () => {
-    const result = await runStoryControl({ projectId: "project_1" });
-
-    expect(result.options).toHaveLength(3);
-    expect(result.approvalBatch.requiredRole).toBe("chief_editor");
-    expect(result.decisionLog.type).toBe("story_control");
-  });
-});
-```
-
-- [ ] **Step 2: 运行测试确认失败**
-
-Run: `pnpm vitest tests/unit/story-control.test.ts`
-Expected: FAIL with missing module
-
-- [ ] **Step 3: 实现最小控盘流程**
-
-```ts
-export async function runStoryControl(input: { projectId: string }) {
-  return {
-    projectId: input.projectId,
-    riskReport: { summary: "mainline drift" },
-    options: ["conservative", "moderate", "force_converge"],
-    approvalBatch: {
-      requiredRole: "chief_editor",
-      scope: "story_control",
-    },
-    decisionLog: {
-      type: "story_control",
-      summary: "pending approval",
-    },
-  };
-}
-```
-
-- [ ] **Step 4: 运行测试确认通过**
-
-Run: `pnpm vitest tests/unit/story-control.test.ts`
-Expected: PASS
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add src/lib/workflows/story-control.ts tests/unit/story-control.test.ts
-git commit -m "feat: add story control workflow"
-```
-
-### Task 8: 实现章节生产工作流
+### Task 7: 实现 chapter production workflow
 
 **Files:**
 - Create: `src/lib/workflows/chapter-production.ts`
 - Create: `tests/unit/chapter-production.test.ts`
 
-- [ ] **Step 1: 写失败测试，约束章节生产必须经过上下文包、审校结果和待审批 proposal**
+- [ ] **Step 1: 写失败单测，约束章节 workflow 输出 draft proposal 和 review**
 
 ```ts
 import { describe, expect, it } from "vitest";
 import { runChapterProduction } from "@/lib/workflows/chapter-production";
 
 describe("runChapterProduction", () => {
-  it("returns draft proposal plus review output", async () => {
+  it("returns a chapter draft proposal plus review result", async () => {
     const result = await runChapterProduction({
       projectId: "project_1",
       chapterId: "chapter_8",
     });
 
-    expect(result.proposal.objectType).toBe("chapter_draft");
+    expect(result.proposals[0].objectType).toBe("chapter_draft");
     expect(result.review.status).toBe("review_ready");
   });
 });
@@ -630,30 +551,33 @@ describe("runChapterProduction", () => {
 
 - [ ] **Step 2: 运行测试确认失败**
 
-Run: `pnpm vitest tests/unit/chapter-production.test.ts`
+Run: `pnpm.cmd vitest tests/unit/chapter-production.test.ts`
 Expected: FAIL with missing module
 
-- [ ] **Step 3: 实现最小章节生产工作流**
+- [ ] **Step 3: 实现最小 workflow**
 
 ```ts
-export async function runChapterProduction(input: { projectId: string; chapterId: string }) {
+export async function runChapterProduction(input: {
+  projectId: string;
+  chapterId: string;
+}) {
   return {
-    proposal: {
-      objectType: "chapter_draft",
-      projectId: input.projectId,
-      chapterId: input.chapterId,
-    },
-    review: {
-      status: "review_ready",
-      summary: "draft matches chapter card",
-    },
+    proposals: [
+      {
+        objectType: "chapter_draft",
+        projectId: input.projectId,
+        chapterId: input.chapterId,
+      },
+    ],
+    review: { status: "review_ready" as const },
+    approvalBatchDraft: { scope: "object" as const, requiredRole: "author" as const },
   };
 }
 ```
 
 - [ ] **Step 4: 运行测试确认通过**
 
-Run: `pnpm vitest tests/unit/chapter-production.test.ts`
+Run: `pnpm.cmd vitest tests/unit/chapter-production.test.ts`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -663,7 +587,62 @@ git add src/lib/workflows/chapter-production.ts tests/unit/chapter-production.te
 git commit -m "feat: add chapter production workflow"
 ```
 
-### Task 9: 实现统一 workflow 入口与三种模式路由
+### Task 8: 实现 story control workflow
+
+**Files:**
+- Create: `src/lib/workflows/story-control.ts`
+- Create: `tests/unit/story-control.test.ts`
+
+- [ ] **Step 1: 写失败单测，约束控盘 workflow 输出风险报告、三类方案和 workflow batch**
+
+```ts
+import { describe, expect, it } from "vitest";
+import { runStoryControl } from "@/lib/workflows/story-control";
+
+describe("runStoryControl", () => {
+  it("returns risk report, correction options and workflow batch draft", async () => {
+    const result = await runStoryControl({ projectId: "project_1" });
+
+    expect(result.options).toHaveLength(3);
+    expect(result.approvalBatchDraft.scope).toBe("workflow");
+    expect(result.decisionLog.type).toBe("story_control");
+  });
+});
+```
+
+- [ ] **Step 2: 运行测试确认失败**
+
+Run: `pnpm.cmd vitest tests/unit/story-control.test.ts`
+Expected: FAIL with missing module
+
+- [ ] **Step 3: 实现最小 workflow**
+
+```ts
+export async function runStoryControl(input: { projectId: string }) {
+  return {
+    projectId: input.projectId,
+    riskReport: { summary: "mainline drift" },
+    options: ["conservative", "moderate", "force_converge"],
+    proposals: [{ objectType: "plot", content: "repair outline" }],
+    approvalBatchDraft: { scope: "workflow" as const, requiredRole: "chief_editor" as const },
+    decisionLog: { type: "story_control" as const },
+  };
+}
+```
+
+- [ ] **Step 4: 运行测试确认通过**
+
+Run: `pnpm.cmd vitest tests/unit/story-control.test.ts`
+Expected: PASS
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/lib/workflows/story-control.ts tests/unit/story-control.test.ts
+git commit -m "feat: add story control workflow"
+```
+
+### Task 9: 实现统一 workflow 入口与 mode routing
 
 **Files:**
 - Create: `src/lib/workflows/novel-workflow.ts`
@@ -674,15 +653,20 @@ git commit -m "feat: add chapter production workflow"
 - Create: `src/lib/llm/prompts.ts`
 - Create: `tests/unit/workflow-modes.test.ts`
 
-- [ ] **Step 1: 写失败测试，约束 workflow 入口路由到三种模式**
+- [ ] **Step 1: 写失败单测，约束 control mode 路由到 story control**
 
 ```ts
 import { describe, expect, it } from "vitest";
 import { runNovelWorkflow } from "@/lib/workflows/novel-workflow";
 
 describe("runNovelWorkflow", () => {
-  it("routes control mode requests to story control workflow", async () => {
-    const result = await runNovelWorkflow({ mode: "control", action: "inspect_story" });
+  it("routes control mode requests to story control", async () => {
+    const result = await runNovelWorkflow({
+      mode: "control",
+      action: "inspect_story",
+      projectId: "project_1",
+    });
+
     expect(result.mode).toBe("control");
   });
 });
@@ -690,42 +674,50 @@ describe("runNovelWorkflow", () => {
 
 - [ ] **Step 2: 运行测试确认失败**
 
-Run: `pnpm vitest tests/unit/workflow-modes.test.ts`
+Run: `pnpm.cmd vitest tests/unit/workflow-modes.test.ts`
 Expected: FAIL with missing module
 
-- [ ] **Step 3: 实现最小模式路由**
+- [ ] **Step 3: 实现最小 mode routing**
 
 ```ts
-export async function runNovelWorkflow(input: { mode: "write" | "review" | "control"; action: string }) {
-  return { mode: input.mode, action: input.action, status: "ok" as const };
+export async function runNovelWorkflow(input: {
+  mode: "write" | "review" | "control";
+  action: string;
+  projectId?: string;
+}) {
+  return {
+    mode: input.mode,
+    action: input.action,
+    status: "ok" as const,
+  };
 }
 ```
 
 - [ ] **Step 4: 运行测试确认通过**
 
-Run: `pnpm vitest tests/unit/workflow-modes.test.ts`
+Run: `pnpm.cmd vitest tests/unit/workflow-modes.test.ts`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/lib/workflows/novel-workflow.ts src/lib/workflows/modes src/lib/llm tests/unit/workflow-modes.test.ts
+git add src/lib/workflows src/lib/llm tests/unit/workflow-modes.test.ts
 git commit -m "feat: add workflow mode routing"
 ```
 
-## Chunk 4: API 与页面落地
+## Chunk 4: API 与页面
 
-### Task 10: 实现项目 API 与项目页
+### Task 10: 实现 projects API 与项目页
 
 **Files:**
 - Create: `src/app/api/projects/route.ts`
-- Create: `src/app/projects/page.tsx`
 - Create: `src/app/projects/[projectId]/page.tsx`
+- Modify: `src/app/projects/page.tsx`
 - Create: `src/components/project/project-summary.tsx`
 - Create: `src/lib/state/project-state.ts`
 - Create: `tests/integration/projects-route.test.ts`
 
-- [ ] **Step 1: 写失败集成测试，直接调用 route handler**
+- [ ] **Step 1: 写失败集成测试，约束项目创建成功返回 201**
 
 ```ts
 import { describe, expect, it } from "vitest";
@@ -746,10 +738,10 @@ describe("POST /api/projects", () => {
 
 - [ ] **Step 2: 运行测试确认失败**
 
-Run: `pnpm vitest tests/integration/projects-route.test.ts`
+Run: `pnpm.cmd vitest tests/integration/projects-route.test.ts`
 Expected: FAIL with missing route
 
-- [ ] **Step 3: 实现项目 route 与项目页**
+- [ ] **Step 3: 实现最小 route 与页面**
 
 ```ts
 import { NextResponse } from "next/server";
@@ -761,14 +753,14 @@ export async function POST() {
 
 - [ ] **Step 4: 运行测试确认通过**
 
-Run: `pnpm vitest tests/integration/projects-route.test.ts`
+Run: `pnpm.cmd vitest tests/integration/projects-route.test.ts`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add src/app/api/projects/route.ts src/app/projects src/components/project/project-summary.tsx src/lib/state/project-state.ts tests/integration/projects-route.test.ts
-git commit -m "feat: add projects dashboard"
+git commit -m "feat: add projects route and dashboard"
 ```
 
 ### Task 11: 实现 workflow API 与章节工作台
@@ -781,7 +773,7 @@ git commit -m "feat: add projects dashboard"
 - Create: `tests/integration/workflow-route.test.ts`
 - Modify: `tests/e2e/project-flow.spec.ts`
 
-- [ ] **Step 1: 写失败测试，要求 workflow route 返回 proposal 或 review 结果**
+- [ ] **Step 1: 写失败集成测试，约束 workflow route 返回 workflow 结果**
 
 ```ts
 import { describe, expect, it } from "vitest";
@@ -794,7 +786,11 @@ describe("POST /api/projects/:projectId/workflow", () => {
       body: JSON.stringify({ mode: "write", action: "draft_chapter" }),
     });
 
-    const response = await POST(request as any, { params: Promise.resolve({ projectId: "project_demo" }) } as any);
+    const response = await POST(
+      request as any,
+      { params: Promise.resolve({ projectId: "project_demo" }) } as any,
+    );
+
     expect(response.status).toBe(200);
   });
 });
@@ -802,10 +798,10 @@ describe("POST /api/projects/:projectId/workflow", () => {
 
 - [ ] **Step 2: 运行测试确认失败**
 
-Run: `pnpm vitest tests/integration/workflow-route.test.ts`
+Run: `pnpm.cmd vitest tests/integration/workflow-route.test.ts`
 Expected: FAIL with missing route
 
-- [ ] **Step 3: 实现 workflow route 与章节工作台**
+- [ ] **Step 3: 实现最小 route 与页面**
 
 ```tsx
 export default function ChapterPage() {
@@ -818,22 +814,19 @@ export default function ChapterPage() {
 }
 ```
 
-- [ ] **Step 4: 运行集成与 E2E 测试确认通过**
+- [ ] **Step 4: 运行集成测试确认通过**
 
-Run: `pnpm vitest tests/integration/workflow-route.test.ts`
-Expected: PASS
-
-Run: `pnpm playwright test tests/e2e/project-flow.spec.ts --grep "chapter workbench"`
+Run: `pnpm.cmd vitest tests/integration/workflow-route.test.ts`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add src/app/api/projects/[projectId]/workflow/route.ts src/app/projects/[projectId]/chapter/page.tsx src/components/chapter/chapter-workbench.tsx src/components/shared/approval-banner.tsx tests/integration/workflow-route.test.ts tests/e2e/project-flow.spec.ts
-git commit -m "feat: add chapter workbench workflow"
+git commit -m "feat: add workflow route and chapter workbench"
 ```
 
-### Task 12: 实现 approve API、审批记录与控盘页
+### Task 12: 实现 approve API 与控盘页
 
 **Files:**
 - Create: `src/app/api/projects/[projectId]/approve/route.ts`
@@ -841,20 +834,24 @@ git commit -m "feat: add chapter workbench workflow"
 - Create: `src/components/control/control-panel.tsx`
 - Create: `tests/integration/approve-route.test.ts`
 
-- [ ] **Step 1: 写失败测试，要求审批记录完整字段**
+- [ ] **Step 1: 写失败集成测试，约束缺少 actorId 和 reason 时返回 400**
 
 ```ts
 import { describe, expect, it } from "vitest";
 import { POST } from "@/app/api/projects/[projectId]/approve/route";
 
 describe("POST /api/projects/:projectId/approve", () => {
-  it("rejects approval request without actor, proposal id and reason", async () => {
+  it("rejects incomplete approval payload", async () => {
     const request = new Request("http://localhost/api/projects/project_demo/approve", {
       method: "POST",
       body: JSON.stringify({}),
     });
 
-    const response = await POST(request as any, { params: Promise.resolve({ projectId: "project_demo" }) } as any);
+    const response = await POST(
+      request as any,
+      { params: Promise.resolve({ projectId: "project_demo" }) } as any,
+    );
+
     expect(response.status).toBe(400);
   });
 });
@@ -862,62 +859,55 @@ describe("POST /api/projects/:projectId/approve", () => {
 
 - [ ] **Step 2: 运行测试确认失败**
 
-Run: `pnpm vitest tests/integration/approve-route.test.ts`
+Run: `pnpm.cmd vitest tests/integration/approve-route.test.ts`
 Expected: FAIL with missing route
 
-- [ ] **Step 3: 实现 approve route 与控盘页**
+- [ ] **Step 3: 实现最小 route 与页面**
 
 ```ts
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  if (!body.proposalId || !body.actorId || !body.reason) {
-    return NextResponse.json({ error: "proposalId, actorId and reason required" }, { status: 400 });
+
+  if (!body.actorId || !body.reason) {
+    return NextResponse.json({ error: "actorId and reason required" }, { status: 400 });
   }
-  return NextResponse.json(
-    {
-      status: "approved",
-      approvalRecord: {
-        actorId: body.actorId,
-        reason: body.reason,
-        approvedAt: new Date().toISOString(),
-      },
-    },
-    { status: 200 },
-  );
+
+  return NextResponse.json({ status: "approved" }, { status: 200 });
 }
 ```
 
 - [ ] **Step 4: 运行测试确认通过**
 
-Run: `pnpm vitest tests/integration/approve-route.test.ts`
+Run: `pnpm.cmd vitest tests/integration/approve-route.test.ts`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/app/api/projects/[projectId]/approve/route.ts src/app/projects/[projectId]/control/page.tsx src/components/control/control-panel.tsx tests/integration/approve-route.test.ts src/lib/state/audit-log.ts
-git commit -m "feat: add approval route and control page"
+git add src/app/api/projects/[projectId]/approve/route.ts src/app/projects/[projectId]/control/page.tsx src/components/control/control-panel.tsx tests/integration/approve-route.test.ts
+git commit -m "feat: add approve route and control page"
 ```
 
-## Chunk 5: 收尾验证与开发文档
-
-### Task 13: 打通端到端导航与最小闭环
+### Task 13: 打通页面导航最小闭环
 
 **Files:**
-- Modify: `tests/e2e/project-flow.spec.ts`
 - Modify: `src/app/projects/[projectId]/page.tsx`
 - Modify: `src/app/projects/[projectId]/chapter/page.tsx`
 - Modify: `src/app/projects/[projectId]/control/page.tsx`
+- Modify: `tests/e2e/project-flow.spec.ts`
 
-- [ ] **Step 1: 扩展失败测试，要求项目页能跳到章节工作台和控盘页**
+- [ ] **Step 1: 写失败 E2E，约束项目页能进入章节工作台和控盘页**
 
 ```ts
+import { expect, test } from "@playwright/test";
+
 test("user can navigate project dashboard, chapter workbench and control page", async ({ page }) => {
   await page.goto("/projects/project_demo");
   await page.getByRole("link", { name: "章节工作台" }).click();
   await expect(page).toHaveURL(/\/chapter$/);
+  await page.goto("/projects/project_demo");
   await page.getByRole("link", { name: "控盘页" }).click();
   await expect(page).toHaveURL(/\/control$/);
 });
@@ -925,49 +915,45 @@ test("user can navigate project dashboard, chapter workbench and control page", 
 
 - [ ] **Step 2: 运行测试确认失败**
 
-Run: `pnpm playwright test tests/e2e/project-flow.spec.ts`
-Expected: FAIL until links exist
+Run: `pnpm.cmd playwright test tests/e2e/project-flow.spec.ts`
+Expected: FAIL until page links exist
 
-- [ ] **Step 3: 补齐页面导航与可见状态**
+- [ ] **Step 3: 实现最小导航**
 
 ```tsx
 <Link href={`/projects/${projectId}/chapter`}>章节工作台</Link>
 <Link href={`/projects/${projectId}/control`}>控盘页</Link>
 ```
 
-- [ ] **Step 4: 运行完整验证**
+- [ ] **Step 4: 运行测试确认通过**
 
-Run: `pnpm vitest`
+Run: `pnpm.cmd playwright test tests/e2e/project-flow.spec.ts`
 Expected: PASS
-
-Run: `pnpm playwright test`
-Expected: PASS
-
-Run: `pnpm prisma validate`
-Expected: schema valid
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add src/app/projects tests/e2e/project-flow.spec.ts
-git commit -m "feat: complete v1 navigation flow"
+git commit -m "feat: complete project navigation flow"
 ```
 
-### Task 14: 完善 README 与本地开发说明
+## Chunk 5: 收尾验证与文档
+
+### Task 14: 完善 README 与环境说明
 
 **Files:**
 - Modify: `README.md`
 - Modify: `.env.example`
 
-- [ ] **Step 1: 写失败检查清单，确认 README 覆盖安装、迁移、测试**
+- [ ] **Step 1: 写文档检查清单**
 
 ```md
 - install
 - env
-- prisma migrate
+- prisma validate
 - run dev
-- run vitest
-- run playwright
+- run unit tests
+- run e2e tests
 ```
 
 - [ ] **Step 2: 手工检查当前 README 不满足清单**
@@ -981,8 +967,8 @@ Expected: missing one or more required sections
 ## Local Development
 
 1. `pnpm install`
-2. `cp .env.example .env`
-3. `pnpm prisma migrate dev`
+2. `Copy-Item .env.example .env`
+3. `pnpm prisma validate`
 4. `pnpm dev`
 5. `pnpm vitest`
 6. `pnpm playwright test`
@@ -997,15 +983,51 @@ Expected: contains all required sections
 
 ```bash
 git add README.md .env.example
-git commit -m "docs: add local development guide"
+git commit -m "docs: complete local development guide"
+```
+
+### Task 15: 完整验证 V1 最小闭环
+
+**Files:**
+- Modify: `README.md` if verification notes need correction
+
+- [ ] **Step 1: 运行单测**
+
+Run: `pnpm.cmd vitest`
+Expected: PASS
+
+- [ ] **Step 2: 运行集成与 E2E**
+
+Run: `pnpm.cmd playwright test`
+Expected: PASS
+
+- [ ] **Step 3: 运行 lint 与 Prisma 校验**
+
+Run: `pnpm.cmd lint`
+Expected: PASS
+
+Run: `pnpm.cmd prisma validate`
+Expected: schema valid
+
+- [ ] **Step 4: 记录任何环境级阻塞并修正文档**
+
+Run: `Get-Content README.md`
+Expected: documents any local caveats discovered during verification
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add README.md
+git commit -m "chore: verify v1 implementation"
 ```
 
 ## Plan Review Notes
 
-- 先打通事实源，再打通审批链，再做 workflow，再挂页面。
-- 章节生产必须依赖完整上下文包与冲突检测，不能先绕过。
-- route 集成测试统一直接导入 handler，避免不可执行的本地 HTTP 假设。
-- 每个 Chunk 完成后先跑对应测试，再进入下一 Chunk。
+- 先修正数据底座，再做 workflow、API 和页面，避免后续建立在错误审批语义上
+- `workflow` 级审批必须通过 `ApprovalBatch` 建模，不允许继续挂靠到单个 proposal
+- workflow 只返回结构化结果，不直接 commit
+- route 测试统一直接导入 handler，避免脆弱的本地服务依赖
+- 最小闭环以显式状态、审批记录和页面可导航为准，不在本轮引入额外复杂度
 
 ## Execution Handoff
 
