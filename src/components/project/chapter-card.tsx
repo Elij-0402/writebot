@@ -1,8 +1,9 @@
 ﻿import Link from "next/link";
-import type { PrototypeChapterCard } from "@/lib/prototype/agent-prototype-data";
+import type { PrototypeChapterCard, PrototypeOverview } from "@/lib/prototype/agent-prototype-data";
 
 type ChapterCardProps = {
   chapter: PrototypeChapterCard;
+  labels: PrototypeOverview["chapterCardLabels"];
 };
 
 const statusClasses: Record<PrototypeChapterCard["status"], string> = {
@@ -12,7 +13,7 @@ const statusClasses: Record<PrototypeChapterCard["status"], string> = {
   需修复: "bg-rose-100 text-rose-900",
 };
 
-export function ChapterCard({ chapter }: ChapterCardProps) {
+export function ChapterCard({ chapter, labels }: ChapterCardProps) {
   return (
     <article className="grid gap-4 rounded-[28px] border border-foreground/10 bg-white/80 p-6 shadow-[0_18px_50px_rgba(29,20,13,0.08)]">
       <div className="flex flex-wrap items-center gap-3">
@@ -24,7 +25,7 @@ export function ChapterCard({ chapter }: ChapterCardProps) {
         </span>
         {chapter.recommended ? (
           <span className="rounded-full bg-foreground px-3 py-1 text-xs font-semibold tracking-[0.18em] text-background">
-            推荐优先
+            {labels.recommended}
           </span>
         ) : null}
       </div>
@@ -32,14 +33,14 @@ export function ChapterCard({ chapter }: ChapterCardProps) {
       <p className="text-sm leading-7 text-foreground/75">{chapter.summary}</p>
 
       <div className="rounded-2xl border border-foreground/10 bg-background/70 p-4 text-sm leading-7 text-foreground/72">
-        最近动作：{chapter.lastAction}
+        {labels.lastAction}：{chapter.lastAction}
       </div>
 
       <Link
         href={chapter.href}
         className="inline-flex items-center justify-center rounded-full border border-foreground/15 bg-white px-4 py-3 text-sm font-semibold text-foreground"
       >
-        进入章节
+        {labels.action}
       </Link>
     </article>
   );

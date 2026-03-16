@@ -1,6 +1,6 @@
-import { expect, test } from "@playwright/test";
+﻿import { expect, test } from "@playwright/test";
 
-test("home redirects to the Chinese project entry", async ({ page }) => {
+test("首页重定向到项目入口", async ({ page }) => {
   await page.goto("/");
 
   await expect(page).toHaveURL(/\/projects$/);
@@ -8,7 +8,7 @@ test("home redirects to the Chinese project entry", async ({ page }) => {
   await expect(page.getByRole("link", { name: "继续当前项目" })).toBeVisible();
 });
 
-test("user can open the Chinese project overview", async ({ page }) => {
+test("用户可以从项目入口进入中文项目概览", async ({ page }) => {
   await page.goto("/projects");
   await page.getByRole("link", { name: "继续当前项目" }).click();
 

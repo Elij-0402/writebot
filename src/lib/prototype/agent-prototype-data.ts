@@ -18,7 +18,14 @@ export type PrototypeChapterCard = {
 
 export type PrototypeOverview = {
   title: string;
+  projectLabel: string;
   progressLabel: string;
+  notesTitle: string;
+  chapterCardLabels: {
+    recommended: string;
+    lastAction: string;
+    action: string;
+  };
   primaryAction: {
     href: string;
     label: string;
@@ -66,7 +73,14 @@ export function getAgentPrototype(projectId: string) {
     ] satisfies PrototypeLink[],
     overview: {
       title: "项目概览",
+      projectLabel: "当前项目",
       progressLabel: "第 8 章需要人工确认，已锁定下一步",
+      notesTitle: "项目提示",
+      chapterCardLabels: {
+        recommended: "推荐优先",
+        lastAction: "最近动作",
+        action: "进入章节",
+      },
       primaryAction: {
         href: `${base}/chapter`,
         label: "继续写作",
