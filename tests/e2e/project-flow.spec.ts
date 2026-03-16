@@ -18,3 +18,14 @@ test("用户可以从项目入口进入中文项目概览", async ({ page }) => 
   await expect(page.getByText("待确认")).toBeVisible();
   await expect(page.getByText("进入章节")).toBeVisible();
 });
+
+test("章节工作区显示三栏写作布局", async ({ page }) => {
+  await page.goto("/projects/project_demo/chapter");
+
+  await expect(page.getByRole("heading", { level: 1, name: "章节工作区" })).toBeVisible();
+  await expect(page.getByText("章节导航")).toBeVisible();
+  await expect(page.getByText("正文编辑区")).toBeVisible();
+  await expect(page.getByText("智能辅助")).toBeVisible();
+  await expect(page.getByText("当前建议")).toBeVisible();
+  await expect(page.getByText("继续写作")).toBeVisible();
+});

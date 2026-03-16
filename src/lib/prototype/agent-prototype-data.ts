@@ -45,6 +45,39 @@ export type PrototypeIssue = {
   consequence: string;
 };
 
+export type PrototypeBanner = {
+  label: string;
+  tone: "confirmation" | "repair";
+  actionLabel: string;
+};
+
+export type PrototypeChapterNavItem = {
+  id: string;
+  label: string;
+  status: PrototypeChapterStatus;
+  href: string;
+};
+
+export type PrototypeAssistantCard = {
+  title: string;
+  body?: string;
+  actions?: string[];
+};
+
+export type PrototypeWorkbench = {
+  pageTitle: string;
+  pageEyebrow: string;
+  chapterNavigationTitle: string;
+  assistantTitle: string;
+  editorLabel: string;
+  currentChapterTitle: string;
+  writingGoal: string;
+  editorBody: string;
+  banner: PrototypeBanner | null;
+  chapterList: PrototypeChapterNavItem[];
+  assistantCards: PrototypeAssistantCard[];
+};
+
 export function getAgentPrototype(projectId: string) {
   const base = `/projects/${projectId}`;
 
@@ -115,15 +148,26 @@ export function getAgentPrototype(projectId: string) {
       affectedArtifacts: ["第 8 章", "人物动机", "档案馆线索"],
     },
     workbench: {
-      currentObjective: "围绕第 8 章继续写作。",
-      chapterBrief: "先确认档案馆段落后的延续方向，再继续生成候选正文。",
-      candidateText:
-        "林澄停在档案馆门前，指尖还扣着上一章留下的钥匙，心里已经替自己否决了三种更安全的退路。",
-      supportNotes: [
-        "锁定约束：档案馆揭秘必须留在第 8 章内完成。",
-        "语气要求：保持克制推进，不提前泄露最终答案。",
+      pageTitle: "章节工作区",
+      pageEyebrow: "围绕当前章节持续创作",
+      chapterNavigationTitle: "章节导航",
+      assistantTitle: "智能辅助",
+      editorLabel: "正文编辑区",
+      currentChapterTitle: "第 8 章",
+      writingGoal: "保持紧张推进，但不要提前透支档案馆揭秘。",
+      editorBody:
+        "林澄停在档案馆门前，指尖还扣着上一章留下的钥匙，心里已经替自己否决了三种更安全的退路。她知道只要再往前一步，真相就会开始主动索取代价。",
+      banner: null,
+      chapterList: [
+        { id: "chapter-7", label: "第 7 章", status: "进行中", href: `${base}/chapter?chapter=7` },
+        { id: "chapter-8", label: "第 8 章", status: "待确认", href: `${base}/chapter?chapter=8` },
       ],
-    },
+      assistantCards: [
+        { title: "当前建议", body: "先确认本章延续方向，再继续生成候选段落。" },
+        { title: "本章上下文", body: "角色动机已锁定，档案馆揭秘必须留在本章内部。" },
+        { title: "可用操作", actions: ["继续写作", "改写这一段", "扩写张力"] },
+      ],
+    } satisfies PrototypeWorkbench,
     control: {
       issue: {
         title: "检测到连续性风险",
