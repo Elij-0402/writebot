@@ -1,0 +1,21 @@
+
+> writebot@0.1.0 dev D:\writebot
+> next dev
+
+▲ Next.js 16.1.6 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://198.18.0.1:3000
+- Environments: .env
+
+✓ Starting...
+✓ Ready in 1753ms
+ GET / 307 in 869ms (compile: 735ms, render: 134ms)
+ GET /projects 200 in 135ms (compile: 55ms, render: 80ms)
+ GET /projects/project_demo 200 in 336ms (compile: 303ms, render: 33ms)
+ GET /projects/project_demo/chapter 200 in 349ms (compile: 300ms, render: 50ms)
+ GET /projects/project_demo/settings 200 in 705ms (compile: 677ms, render: 28ms)
+ GET /projects/project_demo/history 200 in 508ms (compile: 478ms, render: 30ms)
+ GET /projects/project_demo/outline 200 in 466ms (compile: 446ms, render: 20ms)
+ GET /projects/project_demo/story-bible 200 in 459ms (compile: 441ms, render: 19ms)
+ GET /projects/project_demo/chapter 200 in 31ms (compile: 7ms, render: 24ms)
+ GET /projects/project_demo 200 in 29ms (compile: 9ms, render: 19ms)

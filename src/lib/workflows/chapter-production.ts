@@ -1,3 +1,4 @@
+import { getLlmClient } from "@/lib/llm/client";
 import { resolveApprovalRequirement } from "@/lib/authors/approval-policy";
 import { getRiskLevel } from "@/lib/rules/risk-rules";
 import {
@@ -10,25 +11,66 @@ import { ensureProject } from "@/lib/state/local-state";
 export async function runChapterProduction(input: {
   projectId: string;
   chapterId: string;
+  workflowKind?: "draft" | "revision" | "repair";
+  providerProfileName?: string;
+  failureMode?: string;
   isHighRisk?: boolean;
 }) {
   await ensureProject({ projectId: input.projectId });
+  const workflowKind = input.workflowKind ?? "draft";
+  const chapterTitle = input.chapterId === "chapter-12" || input.chapterId === "chapter-8" ? "第12章：夜渡寒江" : input.chapterId;
+  const client = getLlmClient();
+  const completion = await client.complete({
+    workflowKind,
+    chapterTitle,
+    providerProfileName: input.providerProfileName,
+    failureMode: input.failureMode,
+  });
+
+  if (!completion.ok) {
+    return {
+      status: "error" as const,
+      error: completion.error,
+      provenance: completion.provenance,
+      proposals: [],
+      review: { status: "failed" as const },
+    };
+  }
 
   const proposal = await createProposalRecord({
     projectId: input.projectId,
     objectType: "chapter_draft",
     payload: {
       chapterId: input.chapterId,
-      title: input.chapterId === "chapter-8" ? "第 8 章" : input.chapterId,
-      summary: "继续推进当前章节正文。",
-      lastAction: "系统已生成新候选段落",
-      writingGoal: "保持主线推进，并留出下一段转折空间。",
-      body: "新的候选段落已经生成，等待人工确认后纳入当前章节工作区。",
+      title: chapterTitle,
+      summary:
+        workflowKind === "revision"
+          ? "修订提案已生成，等待作者比较后决定。"
+          : workflowKind === "repair"
+            ? "修复提案已生成，等待作者确认后回写。"
+            : "继续推进当前章节正文。",
+      lastAction:
+        workflowKind === "revision"
+          ? "系统已生成修订提案"
+          : workflowKind === "repair"
+            ? "系统已生成修复提案"
+            : "系统已生成新候选段落",
+      writingGoal:
+        workflowKind === "repair"
+          ? "收回冲突信息并保持已批准设定。"
+          : "保持主线推进，并留出下一段转折空间。",
+      body: completion.text,
+      provenance: completion.provenance,
     },
   });
   const reviewedProposal = await markProposalAsReviewReady({
     proposalId: proposal.id,
-    summary: "章节候选已完成初审",
+    summary:
+      workflowKind === "revision"
+        ? "修订提案已完成初审"
+        : workflowKind === "repair"
+          ? "修复提案已完成初审"
+          : "章节候选已完成初审",
   });
   const approvalRequirement = resolveApprovalRequirement({
     objectType: "chapter_draft",
@@ -42,8 +84,10 @@ export async function runChapterProduction(input: {
   });
 
   return {
+    status: "ok" as const,
     proposals: [reviewedProposal],
     review: { status: "review_ready" as const },
     approvalBatchDraft,
+    provenance: completion.provenance,
   };
 }

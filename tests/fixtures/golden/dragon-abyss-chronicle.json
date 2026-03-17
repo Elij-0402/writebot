@@ -1,0 +1,11 @@
+{
+  "projectId": "project_demo",
+  "title": "龙渊纪事",
+  "canonFacts": [
+    { "key": "夜渡寒江", "category": "timeline", "value": "冬夜" },
+    { "key": "寒江渡口", "category": "lore", "value": "临江北岸" },
+    { "key": "林澄", "category": "name", "value": "林澄" }
+  ],
+  "terminology": ["寒江", "夜渡", "档案馆"],
+  "providerFailures": ["timeout", "429", "malformed_json", "partial_stream"]
+}

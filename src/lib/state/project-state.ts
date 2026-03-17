@@ -51,8 +51,8 @@ function buildDynamicOverview(
         batch.status === "pending" &&
         batch.proposals.some((proposal) => proposal.proposalId === latestChapterProposal?.id),
     );
-  const chapterId = typeof chapterPayload.chapterId === "string" ? chapterPayload.chapterId : "chapter-8";
-  const chapterTitle = typeof chapterPayload.title === "string" ? chapterPayload.title : "第 8 章";
+  const chapterId = typeof chapterPayload.chapterId === "string" ? chapterPayload.chapterId : "chapter-12";
+  const chapterTitle = typeof chapterPayload.title === "string" ? chapterPayload.title : "第12章：夜渡寒江";
   const chapterSummary =
     typeof chapterPayload.summary === "string"
       ? chapterPayload.summary
@@ -60,18 +60,37 @@ function buildDynamicOverview(
   const lastAction =
     typeof chapterPayload.lastAction === "string"
       ? chapterPayload.lastAction
-      : pendingBatch
-        ? "等待人工确认"
-        : snapshot.commits.length > 0
-          ? "最近版本已提交"
-          : "系统已生成候选内容";
+        : pendingBatch
+          ? "等待人工确认"
+          : snapshot.commits.length > 0
+            ? "最近版本已提交"
+            : "系统已生成候选内容";
+  const pendingApprovals = snapshot.approvalBatches.filter((batch) => batch.status === "pending").length;
 
   return {
     ...prototype.overview,
     progressLabel:
-      snapshot.approvalBatches.filter((batch) => batch.status === "pending").length > 0
+      pendingApprovals > 0
         ? `${chapterTitle} 需要人工确认，已锁定下一步`
         : `${chapterTitle} 已进入继续写作状态`,
+    signals: [
+      {
+        label: "推荐下一步",
+        value: pendingBatch ? "先处理当前确认，再进入章节工作区。" : "直接进入章节工作区继续写作。",
+      },
+      {
+        label: "当前工件阶段",
+        value: pendingBatch ? "章节草稿待确认" : snapshot.commits.length > 0 ? "章节草稿已批准" : "章节草稿进行中",
+      },
+      {
+        label: "待确认事项",
+        value: `${pendingApprovals} 项待确认`,
+      },
+      {
+        label: "故事设定状态",
+        value: snapshot.commits.length > 0 ? "已批准内容稳定当前设定" : "等待批准后更新稳定设定",
+      },
+    ],
     primaryAction: {
       href: pendingBatch ? `/projects/${projectId}/chapter?panel=confirmation` : `/projects/${projectId}/chapter`,
       label: "继续写作",
@@ -114,6 +133,7 @@ function buildDynamicWorkbench(
   const pendingBatch = [...snapshot.approvalBatches].reverse().find((batch) => batch.status === "pending");
   const chapterPayload = asObject(latestChapterProposal?.payload);
   const repairPayload = asObject(latestRepairProposal?.payload);
+  const latestCommit = snapshot.commits.at(-1);
 
   return {
     ...prototype.workbench,
@@ -125,10 +145,17 @@ function buildDynamicWorkbench(
         : prototype.workbench.writingGoal,
     editorBody:
       typeof chapterPayload.body === "string" ? chapterPayload.body : prototype.workbench.editorBody,
+    draftStateLabel: pendingBatch
+      ? "当前草稿：待确认提案"
+      : snapshot.commits.length > 0
+        ? "当前草稿：可继续修订"
+        : "当前草稿：生成候选中",
+    acceptedStateLabel: latestCommit ? `已批准版本：${latestCommit.version}` : "已批准版本：暂无",
+    revisionActions: ["继续写作", "发起修订", pendingBatch ? "先完成确认" : "修复本章"],
     chapterList: [
       {
-        id: typeof chapterPayload.chapterId === "string" ? chapterPayload.chapterId : "chapter-8",
-        label: typeof chapterPayload.title === "string" ? chapterPayload.title : "第 8 章",
+        id: typeof chapterPayload.chapterId === "string" ? chapterPayload.chapterId : "chapter-12",
+        label: typeof chapterPayload.title === "string" ? chapterPayload.title : "第12章：夜渡寒江",
         status: pendingBatch ? "待确认" : snapshot.commits.length > 0 ? "可继续写作" : "进行中",
         href: pendingBatch ? `/projects/${projectId}/chapter?panel=confirmation` : `/projects/${projectId}/chapter`,
       },
@@ -170,7 +197,7 @@ export async function getProjectsEntryState(): Promise<ProjectEntryState> {
     projectTitle: currentProject.title ?? "未命名项目",
     summary: "从当前项目继续写作，系统状态会以内联方式跟随创作流程。",
     signals: [
-      { label: "当前状态", value: currentProject.id === "project_demo" ? "第 8 章待确认" : "项目已就绪" },
+      { label: "当前状态", value: currentProject.id === "project_demo" ? "第12章待确认" : "项目已就绪" },
       { label: "下一步", value: "进入章节工作区" },
       { label: "主界面", value: "章节工作区" },
     ],
@@ -181,7 +208,7 @@ export async function getProjectsEntryState(): Promise<ProjectEntryState> {
 export async function getProjectOverviewState(projectId: string) {
   await ensureProject({
     projectId,
-    title: projectId === "project_demo" ? "项目演示" : "未命名项目",
+    title: projectId === "project_demo" ? "龙渊纪事" : "未命名项目",
   });
   const snapshot = await getProjectSnapshot(projectId);
 
@@ -200,7 +227,7 @@ export async function getProjectOverviewState(projectId: string) {
 export async function getChapterWorkbenchState(projectId: string) {
   await ensureProject({
     projectId,
-    title: projectId === "project_demo" ? "项目演示" : "未命名项目",
+    title: projectId === "project_demo" ? "龙渊纪事" : "未命名项目",
   });
   const snapshot = await getProjectSnapshot(projectId);
 
@@ -218,7 +245,7 @@ export async function getChapterWorkbenchState(projectId: string) {
 export async function getProjectState(projectId: string) {
   await ensureProject({
     projectId,
-    title: projectId === "project_demo" ? "项目演示" : "未命名项目",
+    title: projectId === "project_demo" ? "龙渊纪事" : "未命名项目",
   });
   const snapshot = await getProjectSnapshot(projectId);
 

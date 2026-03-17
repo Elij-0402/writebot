@@ -25,6 +25,10 @@ export async function POST(
     return NextResponse.json({ error: "approval batch not found" }, { status: 404 });
   }
 
+  if (batch.status !== "pending") {
+    return NextResponse.json({ error: "approval batch already resolved" }, { status: 409 });
+  }
+
   const decision = body.decision === "rejected" ? "rejected" : "approved";
   const decisionResult = await recordApprovalDecision({
     projectId,

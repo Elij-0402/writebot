@@ -27,6 +27,20 @@ export function ProjectOverview({ projectTitle, overview }: ProjectOverviewProps
       </header>
 
       <div className="grid gap-4 md:grid-cols-2">
+        {overview.signals.map((signal) => (
+          <article
+            key={signal.label}
+            className="rounded-[28px] border border-foreground/10 bg-white/72 p-5 shadow-[0_16px_40px_rgba(29,20,13,0.07)]"
+          >
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-foreground/45">
+              {signal.label}
+            </p>
+            <p className="mt-3 text-sm font-semibold leading-7 text-foreground/80">{signal.value}</p>
+          </article>
+        ))}
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
         {overview.chapters.map((chapter) => (
           <ChapterCard key={chapter.id} chapter={chapter} labels={overview.chapterCardLabels} />
         ))}

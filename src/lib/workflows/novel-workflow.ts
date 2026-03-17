@@ -1,3 +1,4 @@
+import { runRevisionWorkflow } from "@/lib/workflows/revision-workflow";
 import { ensureProject } from "@/lib/state/local-state";
 import { runChapterProduction } from "@/lib/workflows/chapter-production";
 import { runProjectBootstrap } from "@/lib/workflows/project-bootstrap";
@@ -10,11 +11,13 @@ export async function runNovelWorkflow(input: {
   prompt?: string;
   chapterId?: string;
   isHighRisk?: boolean;
+  providerProfileName?: string;
+  failureMode?: string;
 }) {
   const projectId = input.projectId ?? "project_demo";
   await ensureProject({
     projectId,
-    title: projectId === "project_demo" ? "项目演示" : "未命名项目",
+    title: projectId === "project_demo" ? "龙渊纪事" : "未命名项目",
   });
 
   if (input.mode === "control") {
@@ -38,13 +41,46 @@ export async function runNovelWorkflow(input: {
     };
   }
 
+  if (input.action === "revision_chapter") {
+    return {
+      mode: input.mode,
+      action: input.action,
+      status: "ok" as const,
+      result: await runRevisionWorkflow({
+        projectId,
+        chapterId: input.chapterId ?? "chapter-12",
+        providerProfileName: input.providerProfileName,
+        failureMode: input.failureMode,
+      }),
+    };
+  }
+
+  if (input.action === "repair_chapter") {
+    return {
+      mode: input.mode,
+      action: input.action,
+      status: "ok" as const,
+      result: await runChapterProduction({
+        projectId,
+        chapterId: input.chapterId ?? "chapter-12",
+        workflowKind: "repair",
+        providerProfileName: input.providerProfileName,
+        failureMode: input.failureMode,
+        isHighRisk: true,
+      }),
+    };
+  }
+
   return {
     mode: input.mode,
     action: input.action,
     status: "ok" as const,
     result: await runChapterProduction({
       projectId,
-      chapterId: input.chapterId ?? "chapter-8",
+      chapterId: input.chapterId ?? "chapter-12",
+      workflowKind: "draft",
+      providerProfileName: input.providerProfileName,
+      failureMode: input.failureMode,
       isHighRisk: input.isHighRisk,
     }),
   };

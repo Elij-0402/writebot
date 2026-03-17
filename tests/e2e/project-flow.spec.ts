@@ -14,9 +14,17 @@ test("用户可以从项目入口进入中文项目概览", async ({ page }) => 
 
   await expect(page).toHaveURL(/\/projects\/project_demo$/);
   await expect(page.getByRole("heading", { level: 1, name: "项目概览" })).toBeVisible();
-  await expect(page.getByText("继续写作")).toBeVisible();
-  await expect(page.getByText("待确认")).toBeVisible();
-  await expect(page.getByText("进入章节")).toBeVisible();
+  await expect(page.getByRole("link", { name: "继续写作" })).toBeVisible();
+  await expect(page.getByText("推荐下一步")).toBeVisible();
+  await expect(page.getByText("当前工件阶段")).toBeVisible();
+  await expect(page.getByText("待确认事项")).toBeVisible();
+  await expect(page.getByText("故事设定状态")).toBeVisible();
+  await expect(page.getByText("待确认", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "进入章节" })).toBeVisible();
+  await expect(page.getByText("workflow graph")).toHaveCount(0);
+  await expect(page.getByText("execution lane")).toHaveCount(0);
+  await expect(page.getByText("artifact state")).toHaveCount(0);
+  await expect(page.getByText("dispatch queue")).toHaveCount(0);
 });
 
 test("章节工作区显示三栏写作布局", async ({ page }) => {
@@ -27,7 +35,10 @@ test("章节工作区显示三栏写作布局", async ({ page }) => {
   await expect(page.getByText("正文编辑区")).toBeVisible();
   await expect(page.getByText("智能辅助")).toBeVisible();
   await expect(page.getByText("当前建议")).toBeVisible();
-  await expect(page.getByText("继续写作")).toBeVisible();
+  await expect(page.getByRole("button", { name: "继续写作" }).first()).toBeVisible();
+  await expect(page.getByText("当前草稿")).toBeVisible();
+  await expect(page.getByText("已批准版本")).toBeVisible();
+  await expect(page.getByRole("button", { name: "发起修订" })).toBeVisible();
 });
 
 test("旧确认页和修复页都会回到章节工作区的内联状态", async ({ page }) => {
@@ -43,6 +54,8 @@ test("旧确认页和修复页都会回到章节工作区的内联状态", async
   await expect(page).toHaveURL(/\/projects\/project_demo\/chapter\?panel=repair$/);
   await expect(page.getByText("检测到一项连续性问题")).toBeVisible();
   await expect(page.getByText("修复建议")).toBeVisible();
+  await expect(page.getByText("修复详情")).toBeVisible();
+  await expect(page.getByText("聊天")).toHaveCount(0);
 });
 
 test("原型使用批准后的中文创作产品语言", async ({ page }) => {
@@ -53,6 +66,31 @@ test("原型使用批准后的中文创作产品语言", async ({ page }) => {
   await expect(page.getByRole("link", { name: "故事设定" })).toBeVisible();
   await expect(page.getByRole("link", { name: "大纲" })).toBeVisible();
   await expect(page.getByRole("link", { name: "历史记录" })).toBeVisible();
+  await expect(page.getByRole("link", { name: /设置.*模型接入/ })).toBeVisible();
+
+  await page.getByRole("link", { name: "章节工作区" }).click();
+  await expect(page).toHaveURL(/\/projects\/project_demo\/chapter$/);
+  await expect(page.getByRole("heading", { level: 1, name: "章节工作区" })).toBeVisible();
+
+  await page.getByRole("link", { name: "故事设定" }).click();
+  await expect(page).toHaveURL(/\/projects\/project_demo\/story-bible$/);
+  await expect(page.getByRole("heading", { level: 1, name: "故事设定" })).toBeVisible();
+
+  await page.getByRole("link", { name: "大纲" }).click();
+  await expect(page).toHaveURL(/\/projects\/project_demo\/outline$/);
+  await expect(page.getByRole("heading", { level: 1, name: "大纲" })).toBeVisible();
+
+  await page.getByRole("link", { name: "历史记录" }).click();
+  await expect(page).toHaveURL(/\/projects\/project_demo\/history$/);
+  await expect(page.getByRole("heading", { level: 1, name: "历史记录" })).toBeVisible();
+
+  await page.getByRole("link", { name: /设置.*模型接入/ }).click();
+  await expect(page).toHaveURL(/\/projects\/project_demo\/settings$/);
+  await expect(page.getByRole("heading", { level: 1, name: "设置/模型接入" })).toBeVisible();
+
+  await page.getByRole("link", { name: "项目概览" }).click();
+  await expect(page).toHaveURL(/\/projects\/project_demo$/);
+  await expect(page.getByRole("heading", { level: 1, name: "项目概览" })).toBeVisible();
 
   await expect(page.getByText("Task Dispatch Cockpit")).toHaveCount(0);
   await expect(page.getByText("Confirmation Center")).toHaveCount(0);

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Prisma } from "@prisma/client";
+import type { ProviderProfile } from "@/lib/llm/provider-profiles";
 import type {
   ApprovalBatchRecord,
   AuditEventType,
@@ -38,6 +39,8 @@ type LocalState = {
   approvalBatchProposals: Array<{ batchId: string; proposalId: string }>;
   commits: LocalStateCommitRecord[];
   auditLogs: AuditRecord[];
+  providerProfiles: ProviderProfile[];
+  defaultProviderProfileId: string | null;
 };
 
 function getStateDirectory() {
@@ -85,8 +88,28 @@ function buildDemoState(): LocalState {
   const proposalId = "proposal_demo_chapter_8";
   const reviewId = "review_demo_chapter_8";
   const batchId = "batch_demo_chapter_8";
+  const providerProfile: ProviderProfile = {
+    id: "provider_openai_compatible_local",
+    name: "openai-compatible-local",
+    adapter: "openai-compatible",
+    protocol: "responses",
+    baseUrl: "http://localhost:11434/v1",
+    apiKey: "demo-key",
+    model: "local-model",
+    capabilities: {
+      chat: false,
+      completions: false,
+      responses: true,
+      streaming: true,
+    },
+    isDefault: true,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+  const originalBody =
+    "林澄停在寒江渡口前，掌心还压着那把旧钥匙。她知道眼前这一步会把整条调查线索推向无法回头的位置。";
   const body =
-    "林澄停在档案馆门前，指尖还扣着上一章留下的钥匙，心里已经替自己否决了三种更安全的退路。她知道只要再往前一步，真相就会开始主动索取代价。";
+    "林澄停在寒江渡口前，指尖还扣着上一章留下的钥匙，心里已经替自己否决了三种更安全的退路。她知道只要再往前一步，真相就会开始主动索取代价。";
 
   const review: ReviewRecord = {
     id: reviewId,
@@ -104,20 +127,27 @@ function buildDemoState(): LocalState {
     objectType: "chapter_draft",
     status: "review_ready",
     payload: {
-      chapterId: "chapter-8",
-      title: "第 8 章",
-      summary: "确认档案馆段落后的延续方向。",
-      lastAction: "系统已整理候选方向",
-      writingGoal: "保持紧张推进，但不要提前透支档案馆揭秘。",
-      body,
+      chapterId: "chapter-12",
+       title: "第12章：夜渡寒江",
+       summary: "确认寒江夜渡后的延续方向。",
+       lastAction: "系统已整理候选方向",
+       writingGoal: "保持夜渡寒江的紧张推进，但不要提前透支真相揭秘。",
+       body,
+       provenance: {
+         providerProfile: "openai-compatible-local",
+        model: "local-model",
+        protocol: "responses",
+        templateVersion: "chapter-draft-v1",
+        status: "pending_review",
+      },
     } satisfies Prisma.JsonObject,
     originalProposal: {
       objectType: "chapter_draft",
-      payload: {
-        chapterId: "chapter-8",
-        body,
-      } satisfies Prisma.JsonObject,
-    },
+        payload: {
+         chapterId: "chapter-12",
+         body: originalBody,
+        } satisfies Prisma.JsonObject,
+      },
     review,
     auditLogs: [],
     createdAt: timestamp,
@@ -130,7 +160,7 @@ function buildDemoState(): LocalState {
     scope: "object",
     requiredRole: "author",
     status: "pending",
-    reason: "确认第 8 章延续方向",
+    reason: "确认第12章：夜渡寒江的延续方向",
     approvedAt: null,
     proposals: [{ proposalId }],
   };
@@ -138,8 +168,8 @@ function buildDemoState(): LocalState {
   return {
     projects: [
       {
-        id: projectId,
-        title: "项目演示",
+       id: projectId,
+        title: "龙渊纪事",
         createdAt: timestamp,
         updatedAt: timestamp,
       },
@@ -163,8 +193,10 @@ function buildDemoState(): LocalState {
         actorId: "system",
         eventType: "review_requested",
         metadata: { proposalId, reviewStatus: "completed" },
-      }),
+        }),
     ],
+    providerProfiles: [providerProfile],
+    defaultProviderProfileId: providerProfile.id,
   };
 }
 
@@ -176,25 +208,42 @@ async function writeState(state: LocalState) {
 async function readState(): Promise<LocalState> {
   try {
     const raw = await readFile(getStateFilePath(), "utf8");
-    const parsed = JSON.parse(raw) as LocalState;
+    const parsed = JSON.parse(raw) as Partial<LocalState>;
+    const normalized: LocalState = {
+      projects: parsed.projects ?? [],
+      proposals: parsed.proposals ?? [],
+      reviews: parsed.reviews ?? [],
+      approvalBatches: parsed.approvalBatches ?? [],
+      approvalBatchProposals: parsed.approvalBatchProposals ?? [],
+      commits: parsed.commits ?? [],
+      auditLogs: parsed.auditLogs ?? [],
+      providerProfiles: parsed.providerProfiles ?? [],
+      defaultProviderProfileId: parsed.defaultProviderProfileId ?? null,
+    };
 
-    if (!parsed.projects.some((project) => project.id === "project_demo")) {
+    if (!normalized.projects.some((project) => project.id === "project_demo")) {
       const nextState = buildDemoState();
-      nextState.projects = [...parsed.projects, ...nextState.projects];
-      nextState.proposals = [...parsed.proposals, ...nextState.proposals];
-      nextState.reviews = [...parsed.reviews, ...nextState.reviews];
-      nextState.approvalBatches = [...parsed.approvalBatches, ...nextState.approvalBatches];
+      nextState.projects = [...normalized.projects, ...nextState.projects];
+      nextState.proposals = [...normalized.proposals, ...nextState.proposals];
+      nextState.reviews = [...normalized.reviews, ...nextState.reviews];
+      nextState.approvalBatches = [...normalized.approvalBatches, ...nextState.approvalBatches];
       nextState.approvalBatchProposals = [
-        ...parsed.approvalBatchProposals,
+        ...normalized.approvalBatchProposals,
         ...nextState.approvalBatchProposals,
       ];
-      nextState.commits = parsed.commits;
-      nextState.auditLogs = [...parsed.auditLogs, ...nextState.auditLogs];
+      nextState.commits = normalized.commits;
+      nextState.auditLogs = [...normalized.auditLogs, ...nextState.auditLogs];
+      nextState.providerProfiles = normalized.providerProfiles;
+      nextState.defaultProviderProfileId = normalized.defaultProviderProfileId;
       await writeState(nextState);
       return nextState;
     }
 
-    return parsed;
+    if (parsed.providerProfiles === undefined || parsed.defaultProviderProfileId === undefined) {
+      await writeState(normalized);
+    }
+
+    return normalized;
   } catch {
     const initialState = buildDemoState();
     await writeState(initialState);
@@ -255,6 +304,14 @@ export async function ensureProject(input: { projectId: string; title?: string |
   const existing = state.projects.find((project) => project.id === input.projectId);
 
   if (existing) {
+    const nextTitle = input.title?.trim();
+
+    if (nextTitle && existing.title !== nextTitle) {
+      existing.title = nextTitle;
+      existing.updatedAt = nowIso();
+      await writeState(state);
+    }
+
     return existing;
   }
 
@@ -526,6 +583,54 @@ export async function getProjectSnapshot(projectId: string) {
       state.proposals.some((proposal) => proposal.projectId === projectId && proposal.id === entry.proposalId),
     ),
     auditLogs: state.auditLogs.filter((entry) => entry.projectId === projectId),
+  };
+}
+
+export async function listProviderProfiles() {
+  const state = await readState();
+
+  return state.providerProfiles.map((profile) => ({
+    ...profile,
+    isDefault: state.defaultProviderProfileId === profile.id,
+  }));
+}
+
+export async function getDefaultProviderProfile() {
+  const state = await readState();
+  const profile = state.providerProfiles.find((entry) => entry.id === state.defaultProviderProfileId);
+  return profile ?? null;
+}
+
+export async function getProviderProfileByName(name: string) {
+  const state = await readState();
+  return state.providerProfiles.find((entry) => entry.name === name) ?? null;
+}
+
+export async function saveProviderProfile(input: ProviderProfile) {
+  const state = await readState();
+  const nextProfiles = state.providerProfiles.filter((profile) => profile.id !== input.id);
+
+  nextProfiles.push({
+    ...input,
+    isDefault: input.isDefault,
+  });
+
+  state.providerProfiles = nextProfiles;
+
+  if (input.isDefault) {
+    state.defaultProviderProfileId = input.id;
+  } else if (state.defaultProviderProfileId === null) {
+    state.defaultProviderProfileId = nextProfiles[0]?.id ?? null;
+  }
+
+  await writeState(state);
+
+  return {
+    profile: {
+      ...input,
+      isDefault: state.defaultProviderProfileId === input.id,
+    },
+    defaultProfileId: state.defaultProviderProfileId,
   };
 }
 

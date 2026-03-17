@@ -1,0 +1,9 @@
+{
+  "chapterId": "chapter-12",
+  "title": "第12章：夜渡寒江",
+  "approvedBody": "林澄停在寒江渡口前，知道只要继续夜渡，真相就会开始索取代价。",
+  "candidateBody": "林澄停在寒江渡口前，知道只要继续夜渡，档案馆里的真相就会开始索取代价。",
+  "contradictionBody": "林澄在春夜抵达寒江南岸，准备公开档案馆真相。",
+  "expectedPunctuation": "。",
+  "properNouns": ["林澄", "寒江", "档案馆"]
+}
